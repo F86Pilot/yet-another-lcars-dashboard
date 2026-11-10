@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#000000">
+  <title>LCARS Home Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="lcars.css?v=8">
+</head>
+<body>
+<div class="lcars">
+
+  <!-- ===== HEADER: title, date/time, elbow curving down-left ===== -->
+  <section class="sec sec-header">
+    <div class="side">
+      <div class="block c-lavender grow"><span>LCARS 47</span></div>
+      <div class="elbow elbow-bottom c-orange"></div>
+    </div>
+    <div class="content">
+      <header class="title-area">
+        <h1>HOME LAB OPERATIONS</h1>
+        <div class="clock">
+          <span id="date" class="clock-date">—</span>
+          <span id="time" class="clock-time">—</span>
+        </div>
+      </header>
+      <div class="bar bar-thick">
+        <div class="seg c-orange grow"></div>
+        <div class="seg c-peach w-12"></div>
+        <div class="seg c-purple w-8"></div>
+        <div class="seg c-tan seg-text"><span id="link-status">LINK —</span></div>
+        <div class="seg c-orange cap-right"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== MAIN ===== -->
+  <section class="sec sec-main">
+    <div class="side">
+      <div class="elbow elbow-top c-purple"></div>
+      <nav class="buttons">
+        <a href="#p-server" class="block c-blue"><span>01-SYSTEMS</span></a>
+        <a href="#p-speedtest" class="block c-peach"><span>02-SPEED</span></a>
+        <a href="#p-plex" class="block c-orange"><span>03-PLEX</span></a>
+        <a href="#p-mesh" class="block c-tan"><span>04-MESH</span></a>
+      </nav>
+      <div class="block c-purple grow"><span id="sys-count">—</span></div>
+    </div>
+
+    <div class="content">
+      <div class="bar bar-thin">
+        <div class="seg c-purple w-20"></div>
+        <div class="seg c-lavender grow"></div>
+        <div class="seg c-peach w-8"></div>
+        <div class="seg c-purple cap-right"></div>
+      </div>
+
+      <main class="panels">
+
+        <!-- Systems: filled in by app.js from the template below -->
+        <section class="panel span-4 sys" id="p-server" data-key="server" data-color="blue"></section>
+        <section class="panel span-4 sys" id="p-nas" data-key="nas" data-color="lavender"></section>
+        <section class="panel span-4 sys" id="p-mac" data-key="mac" data-color="peach"></section>
+
+        <!-- Speedtest -->
+        <section class="panel span-4" id="p-speedtest">
+          <h2 class="panel-head"><span class="pill c-orange"></span><span>INTERNET · SPEEDTEST</span><span class="rule c-orange"></span><span class="ptag"></span></h2>
+          <div class="readouts">
+            <div class="readout"><div class="label">DOWNLOAD</div><div class="value" id="st-down">—</div><div class="unit">MBPS</div></div>
+            <div class="readout"><div class="label">UPLOAD</div><div class="value v-blue" id="st-up">—</div><div class="unit">MBPS</div></div>
+            <div class="readout"><div class="label">PING</div><div class="value v-peach" id="st-ping">—</div><div class="unit">MS</div></div>
+          </div>
+          <svg id="st-spark" class="spark spark-tall" viewBox="0 0 300 60" preserveAspectRatio="none" aria-label="Download and upload history"></svg>
+          <div class="foot">
+            <span><i class="key k-orange"></i>DOWN <i class="key k-blue"></i>UP · <span id="st-count">—</span></span>
+          </div>
+          <div class="st-stats">
+            <div><span class="label">AVERAGE</span><b id="st-avg">—</b></div>
+            <div><span class="label">SLOWEST</span><b id="st-low">—</b></div>
+            <div><span class="label">LAST TEST</span><b id="st-time">—</b></div>
+          </div>
+        </section>
+
+        <!-- Plex -->
+        <section class="panel span-4" id="p-plex">
+          <h2 class="panel-head"><span class="pill c-orange"></span><span>PLEX</span><span class="rule c-orange"></span><span class="ptag"></span></h2>
+          <div class="libs" id="plex-libs"></div>
+          <div class="label sub-head">NOW PLAYING</div>
+          <div id="plex-streams" class="streams"></div>
+          <div class="label sub-head">RECENTLY WATCHED</div>
+          <ol id="plex-history" class="history"></ol>
+        </section>
+
+        <!-- MeshCore -->
+        <section class="panel span-4" id="p-mesh">
+          <h2 class="panel-head"><span class="pill c-tan"></span><span>MESHCORE TRAFFIC</span><span class="rule c-tan"></span><span class="ptag"></span></h2>
+          <ol id="mesh-log" class="mesh"></ol>
+        </section>
+
+      </main>
+    </div>
+  </section>
+</div>
+
+<template id="sys-template">
+  <h2 class="panel-head"><span class="pill"></span><span class="sys-name">—</span><span class="rule"></span><span class="ptag"></span></h2>
+  <div class="meters">
+    <div class="meter-row"><span class="label">CPU</span><div class="meter"><div class="fill f-cpu"></div></div><span class="mval v-cpu">—</span></div>
+    <div class="meter-row"><span class="label">MEM</span><div class="meter"><div class="fill f-ram"></div></div><span class="mval v-ram">—</span></div>
+    <div class="meter-row"><span class="label">DISK</span><div class="meter"><div class="fill f-disk"></div></div><span class="mval v-disk">—</span></div>
+  </div>
+  <div class="net">
+    <div class="net-rates">
+      <span><i class="key k-orange"></i><b class="v-rx">—</b></span>
+      <span><i class="key k-blue"></i><b class="v-tx">—</b></span>
+    </div>
+    <svg class="spark spark-net" viewBox="0 0 300 60" preserveAspectRatio="none"></svg>
+  </div>
+  <div class="foot"><span>UPTIME <b class="v-uptime">—</b></span><span class="v-extra"></span></div>
+</template>
+
+<script src="app.js?v=8"></script>
+</body>
+</html>

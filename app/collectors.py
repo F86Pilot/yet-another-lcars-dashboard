@@ -1,0 +1,378 @@
+"""
+Collectors: each one fetches one kind of data on its own schedule.
+
+Every collector has:
+  name      -> the key it appears under in /api/status
+  interval  -> seconds between refreshes
+  configured() -> False if its settings are missing (panel shows NOT CONFIGURED)
+  collect()    -> returns a dict of data, or raises an error (panel shows NO CONTACT)
+
+Settings come from environment variables, which Docker loads from the .env file.
+"""
+import asyncio
+import os
+import time
+from collections import deque
+from datetime import datetime, timezone
+
+import httpx
+import psutil
+
+
+def env(name, default=None):
+    value = os.environ.get(name, "").strip()
+    return value or default
+
+
+def iso(ts):
+    return datetime.fromtimestamp(ts, timezone.utc).isoformat()
+
+
+class Collector:
+    name = "base"
+    interval = 10
+
+    def configured(self):
+        return True
+
+    async def collect(self):
+        raise NotImplementedError
+
+
+# ------------------------------------------------------------------
+# Shared helpers for "system" panels (server, NAS, Mac all look alike)
+# ------------------------------------------------------------------
+
+class RateTracker:
+    """Turns ever-growing byte counters into bytes-per-second, with history."""
+
+    def __init__(self, points=90):
+        self.prev = None
+        self.rx_hist = deque(maxlen=points)
+        self.tx_hist = deque(maxlen=points)
+
+    def update(self, rx_bytes, tx_bytes):
+        now = time.monotonic()
+        rx_rate = tx_rate = 0.0
+        if self.prev:
+            dt = now - self.prev[0]
+            if dt > 0:
+                rx_rate = max(0.0, (rx_bytes - self.prev[1]) / dt)
+                tx_rate = max(0.0, (tx_bytes - self.prev[2]) / dt)
+                self.rx_hist.append(round(rx_rate))
+                self.tx_hist.append(round(tx_rate))
+        self.prev = (now, rx_bytes, tx_bytes)
+        return {
+            "rx_bps": round(rx_rate),
+            "tx_bps": round(tx_rate),
+            "rx_hist": list(self.rx_hist),
+            "tx_hist": list(self.tx_hist),
+        }
+
+
+def cpu_temperature():
+    """Best-effort CPU temperature on Linux. Returns None if unavailable."""
+    if not hasattr(psutil, "sensors_temperatures"):
+        return None
+    try:
+        temps = psutil.sensors_temperatures()
+    except Exception:
+        return None
+    for chip in ("coretemp", "k10temp", "cpu_thermal", "acpitz"):
+        for reading in temps.get(chip, []):
+            if reading.current:
+                return round(reading.current)
+    return None
+
+
+# ------------------------------------------------------------------
+# servermcserveface (the machine this backend runs on)
+# ------------------------------------------------------------------
+
+class ServerStats(Collector):
+    name = "server"
+    interval = 2
+
+    def __init__(self):
+        self.nic = env("SERVER_NIC")
+        # In Docker the host's disk is mounted read-only at /host
+        self.disk_path = env("SERVER_DISK_PATH", "/host" if os.path.isdir("/host/etc") else "/")
+        self.rates = RateTracker()
+        psutil.cpu_percent(None)  # first call primes the counter
+
+    def _pick_nic(self, counters):
+        if self.nic in counters:
+            return self.nic
+        candidates = [n for n in counters if n != "lo" and not n.startswith(("veth", "docker", "br-", "utun", "lo"))]
+        return max(candidates or counters, key=lambda n: counters[n].bytes_recv)
+
+    async def collect(self):
+        vm = psutil.virtual_memory()
+        du = psutil.disk_usage(self.disk_path)
+        counters = psutil.net_io_counters(pernic=True)
+        nic = self._pick_nic(counters)
+        net = self.rates.update(counters[nic].bytes_recv, counters[nic].bytes_sent)
+        net["iface"] = nic
+        return {
+            "label": env("SERVER_NAME", "SERVERMCSERVEFACE"),
+            "cpu_percent": psutil.cpu_percent(None),
+            "ram": {"used": vm.total - vm.available, "total": vm.total},
+            "disk": {"used": du.used, "total": du.total},
+            "uptime_seconds": int(time.time() - psutil.boot_time()),
+            "temp_c": cpu_temperature(),
+            "net": net,
+        }
+
+
+# ------------------------------------------------------------------
+# Synology NAS over SNMP (read-only, no DSM password needed)
+# ------------------------------------------------------------------
+
+class NasSnmp(Collector):
+    name = "nas"
+    interval = 5
+
+    OIDS = {
+        "cpu_idle":   "1.3.6.1.4.1.2021.11.11.0",
+        "mem_total":  "1.3.6.1.4.1.2021.4.5.0",   # kB
+        "mem_avail":  "1.3.6.1.4.1.2021.4.6.0",
+        "mem_buffer": "1.3.6.1.4.1.2021.4.14.0",
+        "mem_cached": "1.3.6.1.4.1.2021.4.15.0",
+        "uptime":     "1.3.6.1.2.1.25.1.1.0",     # hundredths of a second
+        "temp":       "1.3.6.1.4.1.6574.1.2.0",   # Synology system temp, °C
+        "sys_status": "1.3.6.1.4.1.6574.1.1.0",   # 1 = normal
+        "vol_status": "1.3.6.1.4.1.6574.3.1.1.3.0",  # 1 = normal
+        "vol_free":   "1.3.6.1.4.1.6574.3.1.1.4.0",  # bytes
+        "vol_total":  "1.3.6.1.4.1.6574.3.1.1.5.0",
+    }
+
+    def __init__(self):
+        self.host = env("NAS_HOST")
+        self.community = env("NAS_SNMP_COMMUNITY")
+        self.iface_name = env("NAS_IFACE", "bond0")
+        self.if_index = None
+        self.rates = RateTracker()
+
+    def configured(self):
+        return bool(self.host and self.community)
+
+    async def _run(self, *args):
+        proc = await asyncio.create_subprocess_exec(
+            *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=15)
+        if proc.returncode != 0:
+            raise RuntimeError(err.decode().strip() or "snmp failed")
+        return out.decode()
+
+    async def _find_interface(self):
+        out = await self._run("snmpwalk", "-v2c", "-c", self.community, "-On", "-Oq", "-t", "3",
+                              self.host, "1.3.6.1.2.1.31.1.1.1.1")
+        for line in out.splitlines():
+            oid, _, name = line.partition(" ")
+            if name.strip().strip('"') == self.iface_name:
+                return oid.rsplit(".", 1)[-1]
+        raise RuntimeError("interface {} not found on NAS".format(self.iface_name))
+
+    async def collect(self):
+        if self.if_index is None:
+            self.if_index = await self._find_interface()
+        oids = dict(self.OIDS)
+        oids["rx"] = "1.3.6.1.2.1.31.1.1.1.6." + self.if_index
+        oids["tx"] = "1.3.6.1.2.1.31.1.1.1.10." + self.if_index
+
+        # -Oqvt: print just the values, one per line, timeticks as plain numbers
+        out = await self._run("snmpget", "-v2c", "-c", self.community, "-Oqvt", "-t", "3", "-r", "1",
+                              self.host, *oids.values())
+        # Some values come with units attached ("2020340 kB"), so keep just the number
+        values = [v.strip().strip('"').split()[0] for v in out.splitlines()]
+        n = {k: float(v) for k, v in zip(oids.keys(), values)}
+
+        mem_total = n["mem_total"] * 1024
+        mem_used = (n["mem_total"] - n["mem_avail"] - n["mem_buffer"] - n["mem_cached"]) * 1024
+        net = self.rates.update(n["rx"], n["tx"])
+        net["iface"] = self.iface_name
+        return {
+            "label": env("NAS_NAME", "SMARTNAS"),
+            "cpu_percent": 100 - n["cpu_idle"],
+            "ram": {"used": max(0, mem_used), "total": mem_total},
+            "disk": {"used": n["vol_total"] - n["vol_free"], "total": n["vol_total"]},
+            "uptime_seconds": int(n["uptime"] / 100),
+            "temp_c": int(n["temp"]),
+            "healthy": n["sys_status"] == 1 and n["vol_status"] == 1,
+            "net": net,
+        }
+
+
+# ------------------------------------------------------------------
+# Mac Mini (asks the little helper running on the Mac)
+# ------------------------------------------------------------------
+
+class MacStats(Collector):
+    name = "mac"
+    interval = 5
+
+    def __init__(self, client):
+        self.client = client
+        self.url = env("MAC_STATS_URL")
+
+    def configured(self):
+        return bool(self.url)
+
+    async def collect(self):
+        r = await self.client.get(self.url)
+        r.raise_for_status()
+        data = r.json()
+        data["label"] = env("MAC_NAME", "MAC MINI M4")
+        return data
+
+
+# ------------------------------------------------------------------
+# Speedtest Tracker
+# ------------------------------------------------------------------
+
+class Speedtest(Collector):
+    name = "speedtest"
+    interval = 120
+
+    def __init__(self, client):
+        self.client = client
+        self.url = env("SPEEDTEST_URL")
+        self.token = env("SPEEDTEST_TOKEN")
+
+    def configured(self):
+        return bool(self.url and self.token)
+
+    async def collect(self):
+        r = await self.client.get(
+            self.url.rstrip("/") + "/api/v1/results",
+            params={"sort": "-created_at"},
+            headers={"Authorization": "Bearer " + self.token, "Accept": "application/json"},
+        )
+        r.raise_for_status()
+        results = []
+        for item in r.json()["data"]:
+            if item.get("status") != "completed" or not item.get("download_bits"):
+                continue
+            # created_at is UTC without a timezone marker
+            ts = datetime.strptime(item["created_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            results.append({
+                "timestamp": ts.isoformat(),
+                "download_mbps": round(item["download_bits"] / 1e6, 1),
+                "upload_mbps": round(item["upload_bits"] / 1e6, 1),
+                "ping_ms": round(item["ping"], 1),
+            })
+        if not results:
+            raise RuntimeError("no completed speedtests")
+        return {"latest": results[0], "history": list(reversed(results))}
+
+
+# ------------------------------------------------------------------
+# Plex, via Tautulli
+# ------------------------------------------------------------------
+
+class Plex(Collector):
+    name = "plex"
+    interval = 15
+
+    def __init__(self, client):
+        self.client = client
+        self.url = env("TAUTULLI_URL")
+        self.key = env("TAUTULLI_API_KEY")
+
+    def configured(self):
+        return bool(self.url and self.key)
+
+    async def _cmd(self, cmd, **params):
+        r = await self.client.get(self.url.rstrip("/") + "/api/v2",
+                                  params={"apikey": self.key, "cmd": cmd, **params})
+        r.raise_for_status()
+        body = r.json()["response"]
+        if body.get("result") != "success":
+            raise RuntimeError(body.get("message") or "tautulli error")
+        return body["data"]
+
+    async def collect(self):
+        activity, history, libraries = await asyncio.gather(
+            self._cmd("get_activity"),
+            self._cmd("get_history", length=8),
+            self._cmd("get_libraries"),
+        )
+        streams = []
+        for s in activity.get("sessions", []):
+            decision = s.get("transcode_decision", "direct play")
+            streams.append({
+                "user": s.get("friendly_name") or s.get("user"),
+                "title": s.get("grandparent_title") or s.get("title"),
+                "subtitle": "S{:0>2}E{:0>2} · {}".format(s.get("parent_media_index"), s.get("media_index"), s.get("title"))
+                            if s.get("media_type") == "episode" else s.get("year") or "",
+                "player": s.get("player") or s.get("platform"),
+                "state": s.get("state"),
+                "decision": decision.upper().replace("COPY", "DIRECT STREAM"),
+                "quality": s.get("stream_video_full_resolution") or s.get("quality_profile"),
+                "progress": int(s.get("progress_percent") or 0),
+                "kind": s.get("media_type"),
+            })
+        plays = []
+        for h in history.get("data", []):
+            plays.append({
+                "time": iso(h["date"]) if h.get("date") else None,
+                "user": h.get("friendly_name"),
+                "title": h.get("full_title"),
+                "player": h.get("player") or h.get("platform"),
+                "percent": h.get("percent_complete"),
+                "show": h.get("grandparent_title") or h.get("title"),
+                "kind": h.get("media_type"),
+            })
+        libs = [{"name": l["section_name"], "type": l["section_type"], "count": int(l.get("count") or 0)}
+                for l in libraries]
+        return {"streams": streams, "history": plays, "libraries": libs}
+
+
+# ------------------------------------------------------------------
+# MeshCore messages, via RemoteTerm
+# ------------------------------------------------------------------
+
+class MeshCore(Collector):
+    name = "mesh"
+    interval = 15
+
+    def __init__(self, client):
+        self.client = client
+        self.url = env("REMOTETERM_URL")
+        user, password = env("REMOTETERM_USER"), env("REMOTETERM_PASS")
+        self.auth = (user, password) if user and password else None
+        self.channels = {}
+        self.channels_at = 0
+
+    def configured(self):
+        return bool(self.url)
+
+    async def _get(self, path, **params):
+        r = await self.client.get(self.url.rstrip("/") + path, params=params, auth=self.auth)
+        r.raise_for_status()
+        return r.json()
+
+    async def collect(self):
+        if time.time() - self.channels_at > 600:
+            self.channels = {c["key"]: c["name"] for c in await self._get("/api/channels")}
+            self.channels_at = time.time()
+
+        messages = []
+        for m in await self._get("/api/messages", limit=12):
+            sender = "YOU" if m.get("outgoing") else (m.get("sender_name") or "UNKNOWN")
+            text = m.get("text") or ""
+            # Channel messages arrive as "Sender: text"; strip the repeated name
+            if m.get("sender_name") and text.startswith(m["sender_name"] + ": "):
+                text = text[len(m["sender_name"]) + 2:]
+            paths = m.get("paths") or []
+            best = max(paths, key=lambda p: p.get("rssi") or -999) if paths else {}
+            messages.append({
+                "time": iso(m.get("received_at") or m.get("sender_timestamp") or time.time()),
+                "where": self.channels.get(m.get("conversation_key"), "#?") if m.get("type") == "CHAN" else "DIRECT",
+                "sender": sender,
+                "text": text,
+                "rssi": best.get("rssi"),
+                "snr": best.get("snr"),
+                "hops": best.get("path_len"),
+            })
+        return {"messages": messages}

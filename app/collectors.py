@@ -343,6 +343,8 @@ class MeshCore(Collector):
         self.auth = (user, password) if user and password else None
         self.channels = {}
         self.channels_at = 0
+        # Channels whose name contains any of these words are hidden (e.g. #test, #testing)
+        self.hide_words = [w.strip().lower() for w in (env("MESH_HIDE_CHANNELS_WITH", "test")).split(",") if w.strip()]
 
     def configured(self):
         return bool(self.url)
@@ -358,7 +360,13 @@ class MeshCore(Collector):
             self.channels_at = time.time()
 
         messages = []
-        for m in await self._get("/api/messages", limit=12):
+        # Ask for extra, since messages from hidden channels get dropped below
+        for m in await self._get("/api/messages", limit=60):
+            where = self.channels.get(m.get("conversation_key"), "#?") if m.get("type") == "CHAN" else "DIRECT"
+            if where != "DIRECT" and any(word in where.lower() for word in self.hide_words):
+                continue
+            if len(messages) >= 12:
+                break
             sender = "YOU" if m.get("outgoing") else (m.get("sender_name") or "UNKNOWN")
             text = m.get("text") or ""
             # Channel messages arrive as "Sender: text"; strip the repeated name
@@ -368,7 +376,7 @@ class MeshCore(Collector):
             best = max(paths, key=lambda p: p.get("rssi") or -999) if paths else {}
             messages.append({
                 "time": iso(m.get("received_at") or m.get("sender_timestamp") or time.time()),
-                "where": self.channels.get(m.get("conversation_key"), "#?") if m.get("type") == "CHAN" else "DIRECT",
+                "where": where,
                 "sender": sender,
                 "text": text,
                 "rssi": best.get("rssi"),

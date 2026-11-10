@@ -568,7 +568,7 @@ class Repeater(Collector):
     """
     name = "repeater"
     interval = 60          # the loop wakes every minute, but only uses the radio when a reading is due
-    RETRY_AFTER = 15 * 60  # after a failed attempt (repeater out of reach), try again in 15 minutes
+    RETRY_AFTER = 30 * 60  # after a failed attempt (repeater out of reach), try again in 30 minutes
     KEEP_DAYS = 14
     FIELDS = ["battery_volts", "uptime_seconds", "packets_sent", "packets_received",
               "airtime_seconds", "noise_floor_dbm", "last_rssi_dbm", "last_snr_db",

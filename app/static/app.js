@@ -37,11 +37,12 @@ function fmtBytes(b, digits = 1) {
 }
 
 // "used / total" with both in the total's unit, e.g. "4.2 / 15.3 TB"
-function fmtUsed(used, total) {
+// base 1000 for disks (how drives are sold); base 1024 for RAM (so 16 GB of memory reads 16, not 17.2)
+function fmtUsed(used, total, base = 1000) {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let i = 0, t = total;
-  while (t >= 1000 && i < units.length - 1) { t /= 1000; i++; }
-  const u = used / 1000 ** i;
+  while (t >= base && i < units.length - 1) { t /= base; i++; }
+  const u = used / base ** i;
   const digits = t >= 100 ? 0 : 1;
   return `${u.toFixed(digits)} / ${t.toFixed(digits)} ${units[i]}`;
 }
@@ -145,7 +146,7 @@ function renderSystem(panel, entry) {
   setMeter(q(".f-cpu"), s.cpu_percent);
   q(".v-cpu").textContent = `${Math.round(s.cpu_percent)}%`;
   setMeter(q(".f-ram"), (s.ram.used / s.ram.total) * 100, { hot: 85, crit: 95 });
-  q(".v-ram").textContent = fmtUsed(s.ram.used, s.ram.total);
+  q(".v-ram").textContent = fmtUsed(s.ram.used, s.ram.total, 1024);
   setMeter(q(".f-disk"), (s.disk.used / s.disk.total) * 100, { hot: 80, crit: 92 });
   q(".v-disk").textContent = fmtUsed(s.disk.used, s.disk.total);
 

@@ -551,3 +551,116 @@ class Indoor(Collector):
         if not rooms:
             raise RuntimeError("no thermostat or sensors found in Home Assistant")
         return {"rooms": rooms, "thermostat": thermostat}
+
+
+# ------------------------------------------------------------------
+# Solar repeater telemetry (MeshCore, via RemoteTerm)
+# ------------------------------------------------------------------
+
+class Repeater(Collector):
+    """
+    Asks one repeater for its status over the mesh about once an hour, and keeps
+    every reading in a small SQLite file so the graph survives restarts.
+
+    REPEATER_NAME      the repeater's name as RemoteTerm lists it (e.g. Hilltop)
+    REPEATER_PASSWORD  its admin or guest password (blank = guest login)
+    REPEATER_POLL_MIN  minutes between radio requests (default 60; please keep it >= 30)
+    """
+    name = "repeater"
+    interval = 60          # the loop wakes every minute, but only uses the radio when a reading is due
+    RETRY_AFTER = 15 * 60  # after a failed attempt (repeater out of reach), try again in 15 minutes
+    KEEP_DAYS = 14
+    FIELDS = ["battery_volts", "uptime_seconds", "packets_sent", "packets_received",
+              "airtime_seconds", "noise_floor_dbm", "last_rssi_dbm", "last_snr_db",
+              "flood_dups", "direct_dups", "recv_errors", "tx_queue_len"]
+
+    def __init__(self, client):
+        self.client = client
+        self.url = env("REMOTETERM_URL")
+        user, password = env("REMOTETERM_USER"), env("REMOTETERM_PASS")
+        self.auth = (user, password) if user and password else None
+        self.target = env("REPEATER_NAME")
+        self.password = os.environ.get("REPEATER_PASSWORD", "")
+        self.poll_seconds = max(30, int(env("REPEATER_POLL_MIN", "60"))) * 60
+        self.db_path = env("REPEATER_DB", "/data/repeater.db" if os.path.isdir("/data") else "repeater.db")
+        self.key = None
+        self.last_attempt = 0
+        self.last_error = None
+        self._db = None
+
+    def configured(self):
+        return bool(self.url and self.target)
+
+    # --- storage ---
+
+    def db(self):
+        if self._db is None:
+            import sqlite3
+            self._db = sqlite3.connect(self.db_path)
+            cols = ", ".join("{} REAL".format(f) for f in self.FIELDS)
+            self._db.execute("CREATE TABLE IF NOT EXISTS readings (ts REAL PRIMARY KEY, {})".format(cols))
+        return self._db
+
+    def save(self, ts, status):
+        self.db().execute(
+            "INSERT OR REPLACE INTO readings (ts, {}) VALUES (?{})".format(", ".join(self.FIELDS), ", ?" * len(self.FIELDS)),
+            [ts] + [status.get(f) for f in self.FIELDS])
+        self.db().execute("DELETE FROM readings WHERE ts < ?", [ts - self.KEEP_DAYS * 86400])
+        self.db().commit()
+
+    def history(self, days=5):
+        rows = self.db().execute(
+            "SELECT ts, {} FROM readings WHERE ts >= ? ORDER BY ts".format(", ".join(self.FIELDS)),
+            [time.time() - days * 86400]).fetchall()
+        return [dict(zip(["ts"] + self.FIELDS, r)) for r in rows]
+
+    # --- radio ---
+
+    async def _call(self, method, path, **kw):
+        r = await self.client.request(method, self.url.rstrip("/") + path, auth=self.auth, timeout=40, **kw)
+        r.raise_for_status()
+        return r.json()
+
+    async def _find_key(self):
+        offset = 0
+        while True:
+            page = await self._call("GET", "/api/contacts", params={"limit": 1000, "offset": offset})
+            for c in page:
+                if (c.get("name") or "").strip().lower() == self.target.lower():
+                    return c["public_key"]
+            if len(page) < 1000:
+                raise RuntimeError("repeater '{}' not found in RemoteTerm contacts".format(self.target))
+            offset += 1000
+
+    async def _poll_radio(self):
+        if self.key is None:
+            self.key = await self._find_key()
+        base = "/api/contacts/{}/repeater".format(self.key)
+        login = await self._call("POST", base + "/login", json={"password": self.password})
+        if login.get("authenticated") is False:
+            raise RuntimeError("login refused: {}".format(login.get("message") or "check REPEATER_PASSWORD"))
+        return await self._call("POST", base + "/status")
+
+    async def collect(self):
+        history = self.history()
+        last_ts = history[-1]["ts"] if history else 0
+        now = time.time()
+        due = now - last_ts >= self.poll_seconds
+        may_retry = now - self.last_attempt >= self.RETRY_AFTER
+        if due and may_retry:
+            self.last_attempt = now
+            try:
+                status = await self._poll_radio()
+                self.save(now, status)
+                history = self.history()
+                self.last_error = None
+            except Exception as exc:
+                self.last_error = str(exc) or exc.__class__.__name__
+                if not history:
+                    raise  # nothing to show yet: panel says NO CONTACT
+        return {
+            "label": self.target.upper(),
+            "poll_minutes": self.poll_seconds // 60,
+            "last_error": self.last_error,   # shown small if the latest attempt failed but older data exists
+            "readings": history,
+        }

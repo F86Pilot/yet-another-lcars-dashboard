@@ -34,6 +34,7 @@ COLLECTORS = [
     c.MeshCore(client),
     c.Weather(client),
     c.Indoor(client),
+    c.Repeater(client),
 ]
 
 # STATE["nas"] = {"configured": True, "ok": True, "error": None, "updated_at": "...", "data": {...}}

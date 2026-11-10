@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="lcars.css?v=14">
+  <link rel="stylesheet" href="lcars.css?v=15">
 </head>
 <body>
 <div class="lcars">
@@ -101,6 +101,24 @@
           <ol id="mesh-log" class="mesh"></ol>
         </section>
 
+        <!-- Solar repeater: shares the MeshCore spot; tap either panel to switch -->
+        <section class="panel span-4 swap-hidden" id="p-repeater">
+          <h2 class="panel-head"><span class="pill c-tan"></span><span id="rp-name">SOLAR REPEATER</span><span class="rule c-tan"></span><span class="ptag"></span></h2>
+          <div class="rp-top">
+            <div><div class="label">BATTERY</div><b id="rp-now">—</b></div>
+            <div><div class="label">PEAK TODAY</div><b id="rp-peak">—</b></div>
+            <div><div class="label">UPTIME</div><b id="rp-up">—</b></div>
+          </div>
+          <div class="rp-chart">
+            <div class="rp-axis"><span id="rp-hi"></span><span id="rp-base" class="rp-base"></span><span id="rp-lo"></span></div>
+            <svg id="rp-volts" class="rp-svg" viewBox="0 0 300 100" preserveAspectRatio="none" aria-label="Battery voltage, last 4 days"></svg>
+          </div>
+          <div class="rp-days" id="rp-days"></div>
+          <div class="label rp-sub">RELAYED / HR <b id="rp-rate"></b></div>
+          <svg id="rp-packets" class="rp-bars" viewBox="0 0 300 30" preserveAspectRatio="none" aria-label="Packets relayed per hour"></svg>
+          <div class="foot"><span id="rp-radio">—</span><span id="rp-when">—</span></div>
+        </section>
+
         <!-- Outside: weather + air quality (Open-Meteo) -->
         <section class="panel span-6" id="p-weather">
           <h2 class="panel-head"><span class="pill c-lavender"></span><span id="wx-name">OUTSIDE</span><span class="rule c-lavender"></span><span class="ptag"></span></h2>
@@ -144,6 +162,6 @@
   <div class="foot"><span>UPTIME <b class="v-uptime">—</b></span><span class="v-extra"></span></div>
 </template>
 
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>

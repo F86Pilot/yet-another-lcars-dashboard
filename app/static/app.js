@@ -379,6 +379,98 @@ function renderIndoor(entry) {
     ${t.humidity != null ? `<span>HUMIDITY <b>${Math.round(t.humidity)}%</b></span>` : ""}`;
 }
 
+// ---------- solar repeater ----------
+// Shares the MeshCore spot: tap to switch, and it also flips by itself every 20 seconds.
+
+const RP_DAYS = 4;
+let rpShowing = false, rpConfigured = false;
+function swapMeshRepeater(show) {
+  rpShowing = rpConfigured && (show ?? !rpShowing);
+  $("p-mesh").classList.toggle("swap-hidden", rpShowing);
+  $("p-repeater").classList.toggle("swap-hidden", !rpShowing);
+  if (!rpShowing) fitList($("mesh-log"));
+}
+
+function renderRepeater(entry) {
+  const panel = $("p-repeater");
+  rpConfigured = entry.configured;
+  const d = panelState(panel, entry);
+  if (!d) return;
+  $("rp-name").textContent = `SOLAR REPEATER · ${d.label}`;
+  const rows = d.readings.filter((r) => r.battery_volts);
+  if (!rows.length) return;
+  const last = rows[rows.length - 1];
+  $("rp-now").textContent = `${last.battery_volts.toFixed(2)} V`;
+  $("rp-up").textContent = last.uptime_seconds != null ? fmtUptime(last.uptime_seconds) : "—";
+
+  // Time window: the last RP_DAYS days, ending now
+  const end = Date.now() / 1000, start = end - RP_DAYS * 86400;
+  const x = (ts) => ((ts - start) / (end - start)) * 300;
+  const shown = rows.filter((r) => r.ts >= start);
+  const volts = shown.map((r) => r.battery_volts);
+  const baseline = volts.reduce((a, b) => a + b, 0) / volts.length;
+  const lo = Math.floor((Math.min(...volts) - 0.02) * 50) / 50;
+  const hi = Math.ceil((Math.max(...volts) + 0.02) * 50) / 50;
+  const y = (v) => 96 - ((v - lo) / (hi - lo)) * 92;
+
+  // Midnight lines + weekday labels
+  const days = [];
+  const mid = new Date(start * 1000); mid.setHours(24, 0, 0, 0);
+  for (let t = mid.getTime() / 1000; t < end; t += 86400) days.push(t);
+  const dayLines = days.map((t) => `<line class="day" x1="${x(t)}" y1="0" x2="${x(t)}" y2="100"/>`).join("");
+  $("rp-days").innerHTML = days.map((t) => {
+    const noon = t + 43200;
+    if (noon > end) return "";
+    return `<span style="left:${(x(noon) / 3).toFixed(1)}%">${new Date(noon * 1000).toLocaleDateString([], { weekday: "short" }).toUpperCase().slice(0, 2)}</span>`;
+  }).join("");
+
+  // Voltage line (a gap of more than 3 polls breaks it), baseline, and a dot for "now"
+  const runs = [[]];
+  shown.forEach((r, i) => {
+    if (i && r.ts - shown[i - 1].ts > d.poll_minutes * 60 * 3) runs.push([]);
+    runs[runs.length - 1].push(`${x(r.ts).toFixed(1)},${y(r.battery_volts).toFixed(1)}`);
+  });
+  $("rp-volts").innerHTML = dayLines
+    + `<line class="base" x1="0" y1="${y(baseline)}" x2="300" y2="${y(baseline)}"/>`
+    + runs.filter((r) => r.length).map((r) => `<polyline points="${r.join(" ")}"/>`).join("")
+    + `<circle cx="${x(last.ts)}" cy="${y(last.battery_volts)}" r="2.5"/>`;
+  $("rp-hi").textContent = hi.toFixed(2);
+  $("rp-lo").textContent = lo.toFixed(2);
+  const base = $("rp-base");
+  base.textContent = baseline.toFixed(2);
+  base.style.top = `${y(baseline)}%`;
+
+  // Peak since local midnight
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const todays = rows.filter((r) => r.ts * 1000 >= today.getTime()).map((r) => r.battery_volts);
+  $("rp-peak").textContent = todays.length ? `${Math.max(...todays).toFixed(2)} V` : "—";
+
+  // Packets relayed per hour, from the change in the "sent" counter between readings.
+  // A reboot resets the counter, so a drop is skipped rather than drawn as a negative.
+  const bars = [];
+  for (let i = 1; i < shown.length; i++) {
+    const a = shown[i - 1], b = shown[i];
+    const hours = (b.ts - a.ts) / 3600;
+    const sent = b.packets_sent - a.packets_sent;
+    if (hours > 0 && sent >= 0 && hours <= 6) bars.push({ x0: x(a.ts), x1: x(b.ts), rate: sent / hours });
+  }
+  const peakRate = Math.max(1, ...bars.map((b) => b.rate));
+  $("rp-packets").innerHTML = bars.map((b) => {
+    const h = (b.rate / peakRate) * 28;
+    return `<rect x="${(b.x0 + 0.3).toFixed(1)}" y="${(30 - h).toFixed(1)}" width="${Math.max(0.6, b.x1 - b.x0 - 0.6).toFixed(1)}" height="${h.toFixed(1)}"/>`;
+  }).join("");
+  $("rp-rate").textContent = bars.length ? `NOW ${Math.round(bars[bars.length - 1].rate)} · PEAK ${Math.round(peakRate)}` : "";
+
+  // Radio health line
+  const radio = [];
+  if (last.noise_floor_dbm != null) radio.push(`NOISE ${last.noise_floor_dbm} DBM`);
+  if (last.airtime_seconds != null && last.uptime_seconds) radio.push(`AIRTIME ${(100 * last.airtime_seconds / last.uptime_seconds).toFixed(1)}%`);
+  if (last.last_snr_db != null) radio.push(`SNR ${last.last_snr_db}`);
+  $("rp-radio").textContent = radio.join(" · ");
+  $("rp-when").textContent = d.last_error ? "⚠ LAST TRY FAILED" : fmtAgo(new Date(last.ts * 1000).toISOString());
+  $("rp-when").title = d.last_error || "";
+}
+
 // ---------- one-screen mode ----------
 // Remove list items from the end until the list fits its panel, so nothing is cut off halfway.
 // Only matters when the CSS one-screen mode clips the list (on phones everything just scrolls).
@@ -404,6 +496,7 @@ async function poll() {
     renderMesh(data.mesh);
     renderWeather(data.weather);
     renderIndoor(data.indoor);
+    renderRepeater(data.repeater);
     fitList($("mesh-log"));
     fitList($("plex-history"));
 
@@ -420,6 +513,9 @@ async function poll() {
 }
 
 setupSystemPanels();
+$("p-mesh").addEventListener("click", () => swapMeshRepeater());
+$("p-repeater").addEventListener("click", () => swapMeshRepeater());
+setInterval(() => swapMeshRepeater(), 20000);
 tickClock();
 setInterval(tickClock, 1000);
 poll();

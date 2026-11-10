@@ -300,6 +300,32 @@ span > .key:not(:first-child) { margin-left: 10px; }
 .tag.cooling { background: var(--blue); }
 .tag.idle, .tag.off { background: var(--dim); color: var(--lavender); }
 
+/* solar repeater (shares the MeshCore spot) */
+.swap-hidden { display: none !important; }
+#p-mesh, #p-repeater { cursor: pointer; }
+.rp-top { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.rp-top .label { font-size: 13px; }
+.rp-top b { color: var(--orange); font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rp-top div:nth-child(2) b { color: var(--peach); }
+.rp-top div:nth-child(3) b { color: var(--blue); font-size: 22px; }
+.rp-chart { display: grid; grid-template-columns: 34px 1fr; gap: 6px; margin-top: 6px; flex: 1; min-height: 50px; }
+.rp-axis { position: relative; font-size: 12px; color: var(--lavender); font-variant-numeric: tabular-nums; }
+.rp-axis span { position: absolute; right: 0; transform: translateY(-50%); }
+.rp-axis span:first-child { top: 4px; transform: none; }
+.rp-axis span:last-child { bottom: 0; transform: none; }
+.rp-axis .rp-base { color: var(--peach); }
+.rp-svg { width: 100%; height: 100%; min-height: 50px; border-left: 2px solid var(--dim); border-bottom: 2px solid var(--dim); }
+.rp-svg polyline { fill: none; stroke: var(--tan); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.rp-svg .base { stroke: var(--peach); stroke-width: 1; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; opacity: 0.7; }
+.rp-svg .day { stroke: var(--dim); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.rp-svg circle { fill: var(--tan); }
+.rp-days { position: relative; height: 15px; margin-left: 40px; font-size: 12px; color: var(--lavender); }
+.rp-days span { position: absolute; transform: translateX(-50%); }
+.rp-sub { margin-top: 4px; font-size: 13px; }
+.rp-sub b { color: var(--peach); font-weight: 600; margin-left: 6px; }
+.rp-bars { display: block; width: calc(100% - 40px); margin-left: 40px; height: 30px; border-bottom: 2px solid var(--dim); }
+.rp-bars rect { fill: var(--blue); }
+
 /* whole page dims if the backend stops answering */
 body.stale .panels { opacity: 0.45; }
 

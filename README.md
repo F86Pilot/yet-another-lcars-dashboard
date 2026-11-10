@@ -13,6 +13,7 @@ Live at **http://your-server:8088**
 | Plex | Tautulli API (:8181, in `~/tautulli` on the server). Cards are drawn by `lcarsCard()` in app.js, not real posters | 15 s |
 | MeshCore | RemoteTerm API (:8080) | 15 s |
 | Outside | Open-Meteo weather + air quality (internet, free, no key). Location = `WEATHER_LAT/LON` | 10 min |
+| Solar repeater | MeshCore repeater status via RemoteTerm (login + status over the mesh). Readings saved in `data/repeater.db` on the server. Shares the MeshCore spot, tap to switch | 60 min |
 | Indoor climate | ecobee via Home Assistant (:8123, in `~/homeassistant` on the server). Needs `HA_TOKEN` | 30 s |
 
 ## What's where
@@ -28,7 +29,7 @@ Live at **http://your-server:8088**
 ## Deploy after a change (run on the Mac)
 
 ```bash
-cd ~/Documents/lcars-dashboard && rsync -a --exclude .git --exclude .venv --exclude __pycache__ --exclude .DS_Store --delete ./ you@your-server:~/lcars-dashboard/ && ssh you@your-server 'cd ~/lcars-dashboard && docker compose up -d --build'
+cd ~/Documents/lcars-dashboard && rsync -a --exclude .git --exclude data --exclude .venv --exclude __pycache__ --exclude .DS_Store --delete ./ you@your-server:~/lcars-dashboard/ && ssh you@your-server 'cd ~/lcars-dashboard && docker compose up -d --build'
 ```
 
 If you change `lcars.css` or `app.js`, bump the `?v=` number in `index.html` so the tablet picks up the new file.

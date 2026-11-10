@@ -11,3 +11,5 @@ services:
     volumes:
       # Read-only view of the server's disk, so the DISK meter shows the host, not the container
       - /:/host:ro
+      # Saved history (solar repeater readings) lives here, outside the container
+      - ./data:/data

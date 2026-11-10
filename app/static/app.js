@@ -368,7 +368,6 @@ function renderIndoor(entry) {
     <span class="tag ${esc(action.toLowerCase())}">${esc(action)}</span>
     <span>MODE <b>${esc(t.mode)}</b></span>
     <span>SET <b>${set}</b></span>
-    ${t.temp != null ? `<span>AVERAGE <b>${Math.round(t.temp)}°</b></span>` : ""}
     ${t.humidity != null ? `<span>HUMIDITY <b>${Math.round(t.humidity)}%</b></span>` : ""}`;
 }
 

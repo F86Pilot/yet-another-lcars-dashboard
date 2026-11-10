@@ -285,7 +285,7 @@ function renderPlex(entry) {
       </div>`).join("")
     : `<div class="empty">NO ACTIVE STREAMS</div>`;
 
-  $("plex-history").innerHTML = data.history.slice(0, 5).map((h) => `
+  $("plex-history").innerHTML = data.history.slice(0, 8).map((h) => `
     <li>${lcarsCard(h.show, h.kind)}
       <div class="h-body">
         <div class="h-title">${esc(h.title)}</div>
@@ -299,7 +299,7 @@ function renderPlex(entry) {
 function renderMesh(entry) {
   const data = panelState($("p-mesh"), entry);
   if (!data) return;
-  $("mesh-log").innerHTML = data.messages.slice(0, 8).map((m) => `
+  $("mesh-log").innerHTML = data.messages.slice(0, 12).map((m) => `
     <li>
       <div class="m-top">
         <time>${fmtTime(m.time)}</time>
@@ -379,6 +379,17 @@ function renderIndoor(entry) {
     ${t.humidity != null ? `<span>HUMIDITY <b>${Math.round(t.humidity)}%</b></span>` : ""}`;
 }
 
+// ---------- one-screen mode ----------
+// Remove list items from the end until the list fits its panel, so nothing is cut off halfway.
+// Only matters when the CSS one-screen mode clips the list (on phones everything just scrolls).
+function fitList(list) {
+  const bottom = list.getBoundingClientRect().bottom;
+  let items = [...list.children];
+  while (items.length > 1 && items[items.length - 1].getBoundingClientRect().bottom > bottom + 1) {
+    items.pop().remove();
+  }
+}
+
 // ---------- polling loop ----------
 
 async function poll() {
@@ -393,6 +404,8 @@ async function poll() {
     renderMesh(data.mesh);
     renderWeather(data.weather);
     renderIndoor(data.indoor);
+    fitList($("mesh-log"));
+    fitList($("plex-history"));
 
     const systems = ["server", "nas", "mac"];
     const up = systems.filter((k) => data[k].ok).length;

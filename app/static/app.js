@@ -37,7 +37,7 @@ function fmtBytes(b, digits = 1) {
 }
 
 // "used / total" with both in the total's unit, e.g. "4.2 / 15.3 TB"
-// base 1000 for disks (how drives are sold); base 1024 for RAM (so 16 GB of memory reads 16, not 17.2)
+// base 1000 for disks (how drives are sold)
 function fmtUsed(used, total, base = 1000) {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let i = 0, t = total;
@@ -45,6 +45,13 @@ function fmtUsed(used, total, base = 1000) {
   const u = used / base ** i;
   const digits = t >= 100 ? 0 : 1;
   return `${u.toFixed(digits)} / ${t.toFixed(digits)} ${units[i]}`;
+}
+
+// RAM: like fmtUsed, but the total is rounded up to the whole GB the machine shipped with.
+// (The OS reports a bit less, e.g. 15.5 of 16, because firmware/graphics reserve some.)
+function fmtRam(used, total) {
+  const gb = 1024 ** 3;
+  return `${(used / gb).toFixed(1)} / ${Math.ceil(total / gb - 0.05)} GB`;
 }
 
 // Network speed in megabits per second (same unit as the speedtest): bytes/s × 8 ÷ 1,000,000
@@ -146,7 +153,7 @@ function renderSystem(panel, entry) {
   setMeter(q(".f-cpu"), s.cpu_percent);
   q(".v-cpu").textContent = `${Math.round(s.cpu_percent)}%`;
   setMeter(q(".f-ram"), (s.ram.used / s.ram.total) * 100, { hot: 85, crit: 95 });
-  q(".v-ram").textContent = fmtUsed(s.ram.used, s.ram.total, 1024);
+  q(".v-ram").textContent = fmtRam(s.ram.used, s.ram.total);
   setMeter(q(".f-disk"), (s.disk.used / s.disk.total) * 100, { hot: 80, crit: 92 });
   q(".v-disk").textContent = fmtUsed(s.disk.used, s.disk.total);
 

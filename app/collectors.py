@@ -376,3 +376,170 @@ class MeshCore(Collector):
                 "hops": best.get("path_len"),
             })
         return {"messages": messages}
+
+
+# ------------------------------------------------------------------
+# Outdoor weather + air quality, from Open-Meteo (free, no key needed)
+# ------------------------------------------------------------------
+
+# WMO weather codes -> short LCARS-style text
+WEATHER_CODES = {
+    0: "CLEAR", 1: "MOSTLY CLEAR", 2: "PARTLY CLOUDY", 3: "OVERCAST",
+    45: "FOG", 48: "FREEZING FOG",
+    51: "LIGHT DRIZZLE", 53: "DRIZZLE", 55: "HEAVY DRIZZLE", 56: "FREEZING DRIZZLE", 57: "FREEZING DRIZZLE",
+    61: "LIGHT RAIN", 63: "RAIN", 65: "HEAVY RAIN", 66: "FREEZING RAIN", 67: "FREEZING RAIN",
+    71: "LIGHT SNOW", 73: "SNOW", 75: "HEAVY SNOW", 77: "SNOW GRAINS",
+    80: "SHOWERS", 81: "SHOWERS", 82: "HEAVY SHOWERS", 85: "SNOW SHOWERS", 86: "HEAVY SNOW SHOWERS",
+    95: "THUNDERSTORM", 96: "THUNDERSTORM · HAIL", 99: "THUNDERSTORM · HAIL",
+}
+
+# US EPA AQI bands
+AQI_BANDS = [(50, "GOOD"), (100, "MODERATE"), (150, "UNHEALTHY FOR SENSITIVE"),
+             (200, "UNHEALTHY"), (300, "VERY UNHEALTHY"), (9999, "HAZARDOUS")]
+
+
+class Weather(Collector):
+    name = "weather"
+    interval = 600  # Open-Meteo updates roughly every 15 min; no need to ask more often
+
+    def __init__(self, client):
+        self.client = client
+        self.lat = env("WEATHER_LAT")
+        self.lon = env("WEATHER_LON")
+        self.metric = env("WEATHER_UNITS", "us").lower() == "metric"
+
+    def configured(self):
+        return bool(self.lat and self.lon)
+
+    async def _forecast(self):
+        params = {
+            "latitude": self.lat, "longitude": self.lon, "timezone": "auto", "forecast_days": 3,
+            "current": "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day",
+            "daily": "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max",
+        }
+        if not self.metric:
+            params.update(temperature_unit="fahrenheit", wind_speed_unit="mph")
+        r = await self.client.get("https://api.open-meteo.com/v1/forecast", params=params)
+        r.raise_for_status()
+        return r.json()
+
+    async def _air(self):
+        r = await self.client.get("https://air-quality-api.open-meteo.com/v1/air-quality", params={
+            "latitude": self.lat, "longitude": self.lon, "timezone": "auto",
+            "current": "us_aqi,pm2_5,pm10,ozone",
+        })
+        r.raise_for_status()
+        return r.json()["current"]
+
+    async def collect(self):
+        fc, air = await asyncio.gather(self._forecast(), self._air(), return_exceptions=True)
+        if isinstance(fc, Exception):
+            raise fc
+        cur, daily = fc["current"], fc["daily"]
+        days = []
+        for i, date in enumerate(daily["time"]):
+            days.append({
+                "date": date,
+                "high": round(daily["temperature_2m_max"][i]),
+                "low": round(daily["temperature_2m_min"][i]),
+                "sky": WEATHER_CODES.get(daily["weather_code"][i], "—"),
+                "rain_pct": daily["precipitation_probability_max"][i],
+            })
+        aqi = None
+        if not isinstance(air, Exception) and air.get("us_aqi") is not None:
+            value = round(air["us_aqi"])
+            aqi = {
+                "value": value,
+                "category": next(label for limit, label in AQI_BANDS if value <= limit),
+                "pm2_5": air.get("pm2_5"),
+                "pm10": air.get("pm10"),
+                "ozone": air.get("ozone"),
+            }
+        return {
+            "label": env("WEATHER_NAME", "OUTSIDE"),
+            "unit": "C" if self.metric else "F",
+            "wind_unit": "KM/H" if self.metric else "MPH",
+            "temp": round(cur["temperature_2m"]),
+            "feels_like": round(cur["apparent_temperature"]),
+            "humidity": cur["relative_humidity_2m"],
+            "wind": round(cur["wind_speed_10m"]),
+            "sky": WEATHER_CODES.get(cur["weather_code"], "—"),
+            "is_day": bool(cur.get("is_day")),
+            "days": days,
+            "aqi": aqi,
+        }
+
+
+# ------------------------------------------------------------------
+# Indoor temperatures (ecobee), via Home Assistant's REST API
+# ------------------------------------------------------------------
+
+class Indoor(Collector):
+    """
+    One ecobee thermostat with room sensors (upstairs / downstairs).
+
+    INDOOR_ROOMS lists the room sensors as NAME=entity_id pairs separated by commas, e.g.
+      INDOOR_ROOMS=Upstairs=sensor.upstairs_temperature,Downstairs=sensor.downstairs_temperature
+    INDOOR_THERMOSTAT is the climate.* entity (blank = the first one Home Assistant has).
+    It supplies the mode, set point and whether heat/AC is running.
+    """
+    name = "indoor"
+    interval = 30
+
+    def __init__(self, client):
+        self.client = client
+        self.url = env("HA_URL")
+        self.token = env("HA_TOKEN")
+        self.thermostat = env("INDOOR_THERMOSTAT")
+        self.rooms = []
+        for pair in (env("INDOOR_ROOMS") or "").split(","):
+            label, _, entity = pair.partition("=")
+            if entity.strip():
+                self.rooms.append((label.strip(), entity.strip()))
+
+    def configured(self):
+        return bool(self.url and self.token)
+
+    @staticmethod
+    def _number(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    async def collect(self):
+        r = await self.client.get(self.url.rstrip("/") + "/api/states",
+                                  headers={"Authorization": "Bearer " + self.token})
+        r.raise_for_status()
+        states = {s["entity_id"]: s for s in r.json()}
+
+        climate_id = self.thermostat or next((e for e in sorted(states) if e.startswith("climate.")), None)
+        thermostat = None
+        if climate_id in states:
+            s = states[climate_id]
+            a = s["attributes"]
+            thermostat = {
+                "name": (a.get("friendly_name") or "THERMOSTAT").upper(),
+                "temp": a.get("current_temperature"),      # ecobee's average of the sensors in use
+                "humidity": a.get("current_humidity"),
+                "mode": s["state"].upper().replace("_", "/"),   # HEAT, COOL, HEAT/COOL, OFF
+                "action": (a.get("hvac_action") or "").upper(), # HEATING, COOLING, IDLE, FAN
+                "target": a.get("temperature"),
+                "target_low": a.get("target_temp_low"),
+                "target_high": a.get("target_temp_high"),
+            }
+
+        rooms = []
+        for label, entity in self.rooms:
+            s = states.get(entity)
+            if s is None:
+                rooms.append({"name": label.upper() or entity, "missing": True})
+                continue
+            rooms.append({"name": (label or s["attributes"].get("friendly_name") or entity).upper(),
+                          "temp": self._number(s["state"])})
+        if not rooms and thermostat:  # rooms not picked yet: show the thermostat's own reading
+            rooms.append({"name": thermostat["name"], "temp": thermostat["temp"],
+                          "humidity": thermostat["humidity"]})
+        if not rooms:
+            raise RuntimeError("no thermostat or sensors found in Home Assistant")
+        return {"rooms": rooms, "thermostat": thermostat}

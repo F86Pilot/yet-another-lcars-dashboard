@@ -256,6 +256,50 @@ span > .key:not(:first-child) { margin-left: 10px; }
 }
 .mesh li:first-child .m-text { color: #fff; }
 
+/* outside: weather + air quality */
+.big-temp {
+  color: var(--orange); font-size: clamp(54px, 6vw, 78px); font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.big-temp sup { font-size: 0.4em; color: var(--peach); vertical-align: top; margin-left: 2px; }
+.wx-now { display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: center; }
+.wx-sky { color: var(--peach); font-size: 24px; font-weight: 600; line-height: 1.1; }
+.wx-line { color: var(--lavender); font-size: 14px; margin-top: 4px; }
+.wx-line b { color: var(--peach); font-weight: 600; }
+.aqi { text-align: right; }
+.aqi .label { font-size: 13px; }
+.aqi-value {
+  display: inline-block; min-width: 72px; padding: 0 14px; margin: 2px 0;
+  border-radius: 999px 0 0 999px; background: var(--dim); color: #000;
+  font-size: 34px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums;
+}
+.aqi-cat { font-size: 13px; color: var(--peach); max-width: 140px; margin-left: auto; }
+.aqi.good .aqi-value { background: var(--blue); }
+.aqi.moderate .aqi-value { background: var(--tan); }
+.aqi.sensitive .aqi-value { background: var(--orange); }
+.aqi.bad .aqi-value { background: var(--red); }
+.wx-days { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.wx-day { border-left: 6px solid var(--lavender); padding-left: 10px; }
+.wx-day .label { font-size: 13px; }
+.wx-day b { color: var(--peach); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wx-day b span { color: var(--blue); }
+.wx-day .wx-day-sky { color: var(--lavender); font-size: 13px; }
+
+/* inside: ecobee rooms */
+.rooms { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.room { border-left: 6px solid var(--purple); padding-left: 12px; }
+.room .label { font-size: 15px; }
+.room .big-temp { color: var(--peach); }
+.room-meta { margin-top: 4px; font-size: 14px; color: var(--lavender); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.room-meta b { color: var(--peach); font-weight: 600; }
+.hvac { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 14px;
+  padding-top: 10px; border-top: 2px solid var(--dim); font-size: 15px; color: var(--lavender); }
+.hvac b { color: var(--peach); font-weight: 600; }
+.hvac .tag { font-size: 15px; padding: 1px 10px; }
+.tag.heating { background: var(--orange); }
+.tag.cooling { background: var(--blue); }
+.tag.idle, .tag.off { background: var(--dim); color: var(--lavender); }
+
 /* whole page dims if the backend stops answering */
 body.stale .panels { opacity: 0.45; }
 
@@ -268,6 +312,9 @@ body.stale .panels { opacity: 0.45; }
   .span-4, .span-6 { grid-column: span 12; }
 }
 @media (max-width: 640px) {
+  .wx-now { grid-template-columns: auto 1fr; }
+  .aqi { grid-column: span 2; text-align: left; }
+  .aqi-cat { margin-left: 0; }
   :root { --side-w: 46px; --curve-w: 26px; --bar-thick: 18px; --bar-thin: 10px; }
   .lcars { padding: 6px; }
   .block span { display: none; }

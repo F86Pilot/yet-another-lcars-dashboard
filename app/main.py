@@ -23,7 +23,7 @@ from collectors import iso
 log = logging.getLogger("uvicorn.error")
 STATIC_DIR = Path(__file__).parent / "static"
 
-# trust_env=False: everything we talk to is on the home network, so ignore any proxy settings
+# trust_env=False: ignore any proxy settings (almost everything we talk to is on the home network)
 client = httpx.AsyncClient(timeout=8, trust_env=False)
 COLLECTORS = [
     c.ServerStats(),
@@ -32,6 +32,8 @@ COLLECTORS = [
     c.Speedtest(client),
     c.Plex(client),
     c.MeshCore(client),
+    c.Weather(client),
+    c.Indoor(client),
 ]
 
 # STATE["nas"] = {"configured": True, "ok": True, "error": None, "updated_at": "...", "data": {...}}

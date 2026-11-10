@@ -303,6 +303,75 @@ function renderMesh(entry) {
     </li>`).join("") || `<li class="empty">NO MESSAGES</li>`;
 }
 
+// ---------- outside: weather + air quality ----------
+
+const deg = (v, unit = "") => (v == null ? "—" : `${Math.round(v)}<sup>°${unit}</sup>`);
+
+function aqiClass(v) {
+  if (v <= 50) return "good";
+  if (v <= 100) return "moderate";
+  if (v <= 150) return "sensitive";
+  return "bad";
+}
+
+function renderWeather(entry) {
+  const panel = $("p-weather");
+  const w = panelState(panel, entry);
+  if (!w) {
+    if (!entry.configured) $("wx-sky").textContent = "ADD WEATHER_LAT / WEATHER_LON TO .ENV";
+    return;
+  }
+  $("wx-name").textContent = `OUTSIDE · ${w.label.toUpperCase()}`;
+  $("wx-temp").innerHTML = deg(w.temp, w.unit);
+  $("wx-sky").textContent = w.sky;
+  $("wx-feels").textContent = `${w.feels_like}°`;
+  $("wx-hum").textContent = `${w.humidity}%`;
+  $("wx-wind").textContent = `${w.wind} ${w.wind_unit}`;
+
+  const box = $("wx-aqi");
+  box.className = "aqi" + (w.aqi ? ` ${aqiClass(w.aqi.value)}` : "");
+  box.querySelector(".aqi-value").textContent = w.aqi ? w.aqi.value : "—";
+  box.querySelector(".aqi-cat").textContent = w.aqi
+    ? `${w.aqi.category}${w.aqi.pm2_5 != null ? ` · PM2.5 ${Math.round(w.aqi.pm2_5)}` : ""}` : "NO DATA";
+
+  $("wx-days").innerHTML = w.days.map((d, i) => {
+    const name = i === 0 ? "TODAY" : new Date(`${d.date}T12:00`).toLocaleDateString([], { weekday: "short" }).toUpperCase();
+    const rain = d.rain_pct ? ` · ${d.rain_pct}% RAIN` : "";
+    return `<div class="wx-day"><div class="label">${name}</div>
+      <b>${d.high}° <span>${d.low}°</span></b>
+      <div class="wx-day-sky">${esc(d.sky)}${rain}</div></div>`;
+  }).join("");
+}
+
+// ---------- inside: ecobee via Home Assistant ----------
+
+function renderIndoor(entry) {
+  const data = panelState($("p-indoor"), entry);
+  if (!data) {
+    if (!entry.configured) $("indoor-rooms").innerHTML = `<div class="empty">FINISH HOME ASSISTANT SETUP TO ENABLE</div>`;
+    return;
+  }
+  $("indoor-rooms").innerHTML = data.rooms.map((r) => r.missing
+    ? `<div class="room"><div class="label">${esc(r.name)}</div><div class="empty">SENSOR NOT FOUND</div></div>`
+    : `<div class="room"><div class="label">${esc(r.name)}</div>
+        <div class="big-temp">${deg(r.temp)}</div>
+        ${r.humidity != null ? `<div class="room-meta"><span>HUMIDITY <b>${Math.round(r.humidity)}%</b></span></div>` : ""}
+      </div>`).join("");
+
+  // One status line for the thermostat itself: what it's doing and what it's set to
+  const t = data.thermostat;
+  if (!t) { $("indoor-hvac").innerHTML = ""; return; }
+  const set = t.target != null ? `${Math.round(t.target)}°`
+    : t.target_low != null ? `${Math.round(t.target_low)}–${Math.round(t.target_high)}°` : "—";
+  const action = t.mode === "OFF" ? "OFF" : (t.action || t.mode);
+  $("indoor-hvac").innerHTML = `
+    <span class="tag ${esc(action.toLowerCase())}">${esc(action)}</span>
+    <span>MODE <b>${esc(t.mode)}</b></span>
+    <span>SET <b>${set}</b></span>
+    ${t.temp != null ? `<span>AVERAGE <b>${Math.round(t.temp)}°</b></span>` : ""}
+    ${t.humidity != null ? `<span>HUMIDITY <b>${Math.round(t.humidity)}%</b></span>` : ""}`;
+}
+
 // ---------- polling loop ----------
 
 async function poll() {
@@ -315,6 +384,8 @@ async function poll() {
     document.querySelectorAll(".sys").forEach((p) => renderSystem(p, data[p.dataset.key]));
     renderPlex(data.plex);
     renderMesh(data.mesh);
+    renderWeather(data.weather);
+    renderIndoor(data.indoor);
 
     const systems = ["server", "nas", "mac"];
     const up = systems.filter((k) => data[k].ok).length;

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="lcars.css?v=8">
+  <link rel="stylesheet" href="lcars.css?v=10">
 </head>
 <body>
 <div class="lcars">
@@ -46,6 +46,7 @@
         <a href="#p-speedtest" class="block c-peach"><span>02-SPEED</span></a>
         <a href="#p-plex" class="block c-orange"><span>03-PLEX</span></a>
         <a href="#p-mesh" class="block c-tan"><span>04-MESH</span></a>
+        <a href="#p-weather" class="block c-lavender"><span>05-CLIMATE</span></a>
       </nav>
       <div class="block c-purple grow"><span id="sys-count">—</span></div>
     </div>
@@ -100,6 +101,27 @@
           <ol id="mesh-log" class="mesh"></ol>
         </section>
 
+        <!-- Outside: weather + air quality (Open-Meteo) -->
+        <section class="panel span-6" id="p-weather">
+          <h2 class="panel-head"><span class="pill c-lavender"></span><span id="wx-name">OUTSIDE</span><span class="rule c-lavender"></span><span class="ptag"></span></h2>
+          <div class="wx-now">
+            <div class="big-temp" id="wx-temp">—</div>
+            <div class="wx-detail">
+              <div class="wx-sky" id="wx-sky">—</div>
+              <div class="wx-line">FEELS <b id="wx-feels">—</b> · HUMIDITY <b id="wx-hum">—</b> · WIND <b id="wx-wind">—</b></div>
+            </div>
+            <div class="aqi" id="wx-aqi"><div class="label">AIR QUALITY</div><div class="aqi-value">—</div><div class="aqi-cat"></div></div>
+          </div>
+          <div class="wx-days" id="wx-days"></div>
+        </section>
+
+        <!-- Inside: ecobee, via Home Assistant -->
+        <section class="panel span-6" id="p-indoor">
+          <h2 class="panel-head"><span class="pill c-purple"></span><span>INDOOR CLIMATE · ECOBEE</span><span class="rule c-purple"></span><span class="ptag"></span></h2>
+          <div class="rooms" id="indoor-rooms"></div>
+          <div class="hvac" id="indoor-hvac"></div>
+        </section>
+
       </main>
     </div>
   </section>
@@ -122,6 +144,6 @@
   <div class="foot"><span>UPTIME <b class="v-uptime">—</b></span><span class="v-extra"></span></div>
 </template>
 
-<script src="app.js?v=8"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

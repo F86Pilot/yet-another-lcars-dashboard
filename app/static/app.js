@@ -329,9 +329,9 @@ setInterval(() => {
   });
 }, 5000);
 
-// A tap (not a swipe) on MeshCore / Hilltop switches between them
+// A tap (not a swipe) on MeshCore / the repeater switches between them
 // ---------- tap sounds ----------
-// One of Preston's three key-press sounds (static/sounds), picked at random on
+// One of three key-press sounds (static/sounds), picked at random on
 // every tap. Browsers only allow sound after a tap, which is exactly when these play.
 const SOUND_FILES = ["sounds/keyok1.wav", "sounds/keyok2.wav", "sounds/keyok3.wav"];
 let audio = null, sounds = null, lastSound = -1;
@@ -553,8 +553,7 @@ async function poll() {
     renderIndoor(data.indoor);
     renderRepeater(data.repeater);
 
-    const systems = ["server", "nas", "mac"];
-    const up = systems.filter((k) => data[k].ok).length;
+    if (data.title) $("title").textContent = data.title.toUpperCase();
     $("link-status").textContent = "LINK ESTABLISHED";
     document.body.classList.remove("stale");
   } catch (err) {

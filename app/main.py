@@ -73,7 +73,7 @@ async def lifespan(app):
     await client.aclose()
 
 
-app = FastAPI(title="LCARS Home Lab", lifespan=lifespan)
+app = FastAPI(title="Yet Another LCARS Dashboard", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -87,7 +87,8 @@ async def no_stale_pages(request, call_next):
 
 @app.get("/api/status")
 def status():
-    return {"generated_at": iso(time.time()), **STATE}
+    return {"generated_at": iso(time.time()),
+            "title": c.env("DASHBOARD_TITLE", "HOME LAB OPERATIONS"), **STATE}
 
 
 # Must come last: anything that isn't /api/... is treated as a file in ./static

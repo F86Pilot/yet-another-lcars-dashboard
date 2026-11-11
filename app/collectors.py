@@ -88,7 +88,7 @@ def cpu_temperature():
 
 
 # ------------------------------------------------------------------
-# servermcserveface (the machine this backend runs on)
+# The server (the machine this backend runs on)
 # ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
@@ -237,7 +237,7 @@ class ServerStats(Collector):
             self.top_at = time.time()
         return {
             "top": {**self.top, "net": self.nethogs.latest, "net_kind": "apps"},
-            "label": env("SERVER_NAME", "SERVERMCSERVEFACE"),
+            "label": env("SERVER_NAME", "SERVER"),
             "cpu_percent": psutil.cpu_percent(None),
             "ram": {"used": vm.total - vm.available, "total": vm.total},
             "disk": {"used": du.used, "total": du.total},
@@ -367,7 +367,7 @@ class NasSnmp(Collector):
             self.top_at = time.time()
         return {
             "top": self.top,
-            "label": env("NAS_NAME", "SMARTNAS"),
+            "label": env("NAS_NAME", "NAS"),
             "cpu_percent": 100 - n["cpu_idle"],
             "ram": {"used": max(0, mem_used), "total": mem_total},
             "disk": {"used": n["vol_total"] - n["vol_free"], "total": n["vol_total"]},
@@ -397,48 +397,8 @@ class MacStats(Collector):
         r = await self.client.get(self.url)
         r.raise_for_status()
         data = r.json()
-        data["label"] = env("MAC_NAME", "MAC MINI M4")
+        data["label"] = env("MAC_NAME", "MAC")
         return data
-
-
-# ------------------------------------------------------------------
-# Speedtest Tracker
-# ------------------------------------------------------------------
-
-class Speedtest(Collector):
-    name = "speedtest"
-    interval = 120
-
-    def __init__(self, client):
-        self.client = client
-        self.url = env("SPEEDTEST_URL")
-        self.token = env("SPEEDTEST_TOKEN")
-
-    def configured(self):
-        return bool(self.url and self.token)
-
-    async def collect(self):
-        r = await self.client.get(
-            self.url.rstrip("/") + "/api/v1/results",
-            params={"sort": "-created_at"},
-            headers={"Authorization": "Bearer " + self.token, "Accept": "application/json"},
-        )
-        r.raise_for_status()
-        results = []
-        for item in r.json()["data"]:
-            if item.get("status") != "completed" or not item.get("download_bits"):
-                continue
-            # created_at is UTC without a timezone marker
-            ts = datetime.strptime(item["created_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            results.append({
-                "timestamp": ts.isoformat(),
-                "download_mbps": round(item["download_bits"] / 1e6, 1),
-                "upload_mbps": round(item["upload_bits"] / 1e6, 1),
-                "ping_ms": round(item["ping"], 1),
-            })
-        if not results:
-            raise RuntimeError("no completed speedtests")
-        return {"latest": results[0], "history": list(reversed(results))}
 
 
 # ------------------------------------------------------------------

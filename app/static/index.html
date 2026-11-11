@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="lcars.css?v=22">
+  <link rel="stylesheet" href="lcars.css?v=23">
 </head>
 <body>
 <div class="lcars">
@@ -82,19 +82,23 @@
         <!-- Solar repeater: shares the MeshCore spot; tap either panel to switch -->
         <section class="panel span-6 swap-hidden" id="p-repeater" style="--c:var(--tan)">
           <h2 class="panel-head"><span class="ph-name" id="rp-name">SOLAR REPEATER</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
-          <div class="rp-top">
-            <div><div class="label">BATTERY</div><b id="rp-now">—</b></div>
-            <div><div class="label">PEAK TODAY</div><b id="rp-peak">—</b></div>
-            <div><div class="label">UPTIME</div><b id="rp-up">—</b></div>
+          <div class="clim rp-top">
+            <div class="cell"><div class="label">BATTERY</div><div class="bignum c-orange" id="rp-now">—</div></div>
+            <div class="cell"><div class="label">PEAK TODAY</div><div class="bignum c-peach" id="rp-peak">—</div></div>
+            <div class="side-info">
+              <div class="line">RELAYED <b id="rp-rate">—</b></div>
+              <div class="line">AIRTIME <b id="rp-air">—</b></div>
+              <div class="line" id="rp-when">—</div>
+            </div>
           </div>
+          <div class="sub-bar"><span>BATTERY · 4 DAYS</span><i></i></div>
           <div class="rp-chart">
             <div class="rp-axis"><span id="rp-hi"></span><span id="rp-base" class="rp-base"></span><span id="rp-lo"></span></div>
             <svg id="rp-volts" class="rp-svg" viewBox="0 0 300 100" preserveAspectRatio="none" aria-label="Battery voltage, last 4 days"></svg>
           </div>
           <div class="rp-days" id="rp-days"></div>
-          <div class="label rp-sub">RELAYED / HR <b id="rp-rate"></b></div>
+          <div class="sub-bar"><span>RELAYED / HOUR</span><i></i></div>
           <svg id="rp-packets" class="rp-bars" viewBox="0 0 300 30" preserveAspectRatio="none" aria-label="Packets relayed per hour"></svg>
-          <div class="foot"><span id="rp-radio">—</span><span id="rp-when">—</span></div>
         </section>
 
         <!-- Outside: weather + air quality (Open-Meteo) -->
@@ -140,6 +144,6 @@
   <svg class="spark spark-net" viewBox="0 0 300 60" preserveAspectRatio="none"></svg>
 </template>
 
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>

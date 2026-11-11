@@ -371,12 +371,13 @@ function renderRepeater(entry) {
   rpConfigured = entry.configured;
   const d = panelState(panel, entry);
   if (!d) return;
-  $("rp-name").textContent = `SOLAR REPEATER · ${d.label}`;
+  $("rp-name").textContent = `${d.label.toUpperCase()} · SOLAR REPEATER`;
   const rows = d.readings.filter((r) => r.battery_volts);
   if (!rows.length) return;
   const last = rows[rows.length - 1];
-  $("rp-now").textContent = `${last.battery_volts.toFixed(2)} V`;
-  $("rp-up").textContent = last.uptime_seconds != null ? fmtUptime(last.uptime_seconds) : "—";
+  $("rp-now").innerHTML = `${last.battery_volts.toFixed(2)}<span class="dg">V</span>`;
+  // Header end cap: uptime, like the system panels
+  panel.querySelector(".ph-cap").textContent = last.uptime_seconds != null ? fmtUptime(last.uptime_seconds).split(" ")[0] : "";
 
   // Time window: the last RP_DAYS days, ending now
   const end = Date.now() / 1000, start = end - RP_DAYS * 86400;
@@ -418,7 +419,7 @@ function renderRepeater(entry) {
   // Peak since local midnight
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const todays = rows.filter((r) => r.ts * 1000 >= today.getTime()).map((r) => r.battery_volts);
-  $("rp-peak").textContent = todays.length ? `${Math.max(...todays).toFixed(2)} V` : "—";
+  $("rp-peak").innerHTML = todays.length ? `${Math.max(...todays).toFixed(2)}<span class="dg">V</span>` : "—";
 
   // Packets relayed per hour, from the change in the "sent" counter between readings.
   // A reboot resets the counter, so a drop is skipped rather than drawn as a negative.
@@ -434,15 +435,12 @@ function renderRepeater(entry) {
     const h = (b.rate / peakRate) * 28;
     return `<rect x="${(b.x0 + 0.3).toFixed(1)}" y="${(30 - h).toFixed(1)}" width="${Math.max(0.6, b.x1 - b.x0 - 0.6).toFixed(1)}" height="${h.toFixed(1)}"/>`;
   }).join("");
-  $("rp-rate").textContent = bars.length ? `NOW ${Math.round(bars[bars.length - 1].rate)} · PEAK ${Math.round(peakRate)}` : "";
+  $("rp-rate").textContent = bars.length ? `${Math.round(bars[bars.length - 1].rate)} / HR · PEAK ${Math.round(peakRate)}` : "—";
 
-  // Radio health line
-  const radio = [];
-  if (last.noise_floor_dbm != null) radio.push(`NOISE ${last.noise_floor_dbm} DBM`);
-  if (last.airtime_seconds != null && last.uptime_seconds) radio.push(`AIRTIME ${(100 * last.airtime_seconds / last.uptime_seconds).toFixed(1)}%`);
-  if (last.last_snr_db != null) radio.push(`SNR ${last.last_snr_db}`);
-  $("rp-radio").textContent = radio.join(" · ");
-  $("rp-when").textContent = d.last_error ? "⚠ LAST TRY FAILED" : fmtAgo(new Date(last.ts * 1000).toISOString());
+  // Share of time the radio spends transmitting
+  $("rp-air").textContent = last.airtime_seconds != null && last.uptime_seconds
+    ? `${(100 * last.airtime_seconds / last.uptime_seconds).toFixed(1)}%` : "—";
+  $("rp-when").textContent = d.last_error ? "⚠ LAST CHECK FAILED" : `CHECKED ${fmtAgo(new Date(last.ts * 1000).toISOString())}`;
   $("rp-when").title = d.last_error || "";
 }
 

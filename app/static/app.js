@@ -130,7 +130,7 @@ function setupSystemPanels() {
     onTap(panel, () => {
       lastTouch = Date.now();
       const next = SYS_VIEWS[(SYS_VIEWS.indexOf(panel.dataset.view) + 1) % SYS_VIEWS.length];
-      chirp(next === "overview" ? "back" : "next");
+      chirp();
       setSysView(panel, next);
     });
   });
@@ -331,31 +331,31 @@ setInterval(() => {
 
 // A tap (not a swipe) on MeshCore / Hilltop switches between them
 // ---------- tap sounds ----------
-// Short computer chirps, made on the fly with the Web Audio API (no sound files).
-// Browsers only allow sound after a tap, which is exactly when these play.
-let audio = null;
-const CHIRPS = {
-  next: [[1180, 0.045], [1580, 0.06]],          // step forward / switch
-  back: [[1580, 0.045], [1050, 0.07]],          // back to the overview
-  nav:  [[880, 0.04], [1320, 0.04], [1760, 0.06]],
-};
-function chirp(kind = "next") {
+// One of Preston's three key-press sounds (static/sounds), picked at random on
+// every tap. Browsers only allow sound after a tap, which is exactly when these play.
+const SOUND_FILES = ["sounds/keyok1.wav", "sounds/keyok2.wav", "sounds/keyok3.wav"];
+let audio = null, sounds = null, lastSound = -1;
+function loadSounds() {
+  audio = new (window.AudioContext || window.webkitAudioContext)();
+  sounds = SOUND_FILES.map((url) =>
+    fetch(url).then((r) => r.arrayBuffer()).then((b) => audio.decodeAudioData(b)).catch(() => null));
+}
+// start loading on the very first touch anywhere, so the first sound isn't late
+document.addEventListener("pointerdown", () => { if (!audio) loadSounds(); }, { once: true });
+async function chirp() {
   try {
-    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    if (!audio) loadSounds();
     if (audio.state === "suspended") audio.resume();
-    let t = audio.currentTime + 0.01;
-    for (const [freq, dur] of CHIRPS[kind] || CHIRPS.next) {
-      const osc = audio.createOscillator(), gain = audio.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, t);
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.18, t + 0.008);   // quick attack
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);   // soft tail, no click
-      osc.connect(gain).connect(audio.destination);
-      osc.start(t);
-      osc.stop(t + dur + 0.02);
-      t += dur * 0.9;
-    }
+    // random, but never the same sound twice in a row
+    let i = Math.floor(Math.random() * SOUND_FILES.length);
+    if (i === lastSound) i = (i + 1) % SOUND_FILES.length;
+    lastSound = i;
+    const buf = await sounds[i];
+    if (!buf) return;
+    const src = audio.createBufferSource();
+    src.buffer = buf;
+    src.connect(audio.destination);
+    src.start();
   } catch (e) { /* no audio available: stay silent */ }
 }
 
@@ -565,9 +565,9 @@ async function poll() {
 }
 
 setupSystemPanels();
-onTap($("p-mesh"), () => { chirp("next"); swapMeshRepeater(); });
-onTap($("p-repeater"), () => { chirp("back"); swapMeshRepeater(); });
-document.querySelectorAll(".buttons a").forEach((a) => a.addEventListener("click", () => chirp("nav")));
+onTap($("p-mesh"), () => { chirp(); swapMeshRepeater(); });
+onTap($("p-repeater"), () => { chirp(); swapMeshRepeater(); });
+document.querySelectorAll(".buttons a").forEach((a) => a.addEventListener("click", () => chirp()));
 // Auto-switch every 20 s, but not while someone is reading/scrolling the messages
 setInterval(() => { if (Date.now() - lastTouch > IDLE_MS) swapMeshRepeater(); }, 20000);
 tickClock();

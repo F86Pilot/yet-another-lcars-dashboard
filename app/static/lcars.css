@@ -211,7 +211,14 @@ span > .key:not(:first-child) { margin-left: 10px; }
 
 
 /* plex */
-.lcard { display: block; width: 100%; height: auto; font-family: var(--font); letter-spacing: 0.02em; }
+/* show tile: a colored LCARS block with the show's initials */
+.ltile {
+  display: flex; align-items: center; justify-content: center; aspect-ratio: 1;
+  border-radius: 999px 0 0 999px; color: #000; font-weight: 700; font-size: 26px; letter-spacing: 0.02em;
+}
+.ltile.long { font-size: 19px; }
+.history .ltile { font-size: 13px; }
+.history .ltile.long { font-size: 9px; }
 .streams { display: flex; flex-direction: column; gap: 10px; }
 .stream { display: grid; grid-template-columns: 72px 1fr; gap: 12px; align-items: center; }
 .stream-title { color: var(--orange); font-size: 22px; font-weight: 600; line-height: 1.1; }
@@ -222,7 +229,7 @@ span > .key:not(:first-child) { margin-left: 10px; }
 .stream .meter { height: 8px; margin-top: 6px; }
 .stream .meter .fill { background: var(--orange); }
 .history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.history li { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: center; }
+.history li { display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: center; }
 .history li.empty { display: block; }
 .h-body { min-width: 0; }
 .history .h-title { color: var(--peach); font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -350,10 +357,9 @@ body.stale .panels { opacity: 0.45; }
 
   /* middle row */
   .sub-head { margin: 8px 0 4px; }
-  .stream { grid-template-columns: 56px 1fr; }
+  .stream { grid-template-columns: 64px 1fr; }
   .stream-title { font-size: 20px; }
-  .mesh, .history { flex: 1; min-height: 0; overflow: hidden; }
-  .history { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--orange) transparent; padding-right: 6px; }
+  .mesh, .history { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--orange) transparent; padding-right: 6px; }
   .mesh { gap: 7px; }
   .mesh li { font-size: 15px; }
 

@@ -196,44 +196,12 @@ function abbreviate(title) {
   return abbr.slice(0, 5);
 }
 
-function wrapWords(text, maxChars, maxLines) {
-  const lines = [];
-  let line = "";
-  for (const word of text.toUpperCase().split(/\s+/)) {
-    if ((line + " " + word).trim().length > maxChars && line) { lines.push(line); line = word; }
-    else line = (line + " " + word).trim();
-  }
-  if (line) lines.push(line);
-  if (lines.length > maxLines) { lines.length = maxLines; lines[maxLines - 1] += "…"; }
-  return lines;
-}
-
-function lcarsCard(title, kind) {
+function lcarsCard(title) {
   title = title || "UNKNOWN";
-  const h = hashStr(title);
-  // Three different palette colors, chosen by the title's hash
-  const i1 = h % 6;
-  const i2 = (i1 + 1 + ((h >>> 4) % 5)) % 6;
-  let i3 = (i1 + 1 + ((h >>> 8) % 5)) % 6;
-  if (i3 === i2) i3 = (i3 + 1) % 6 === i1 ? (i3 + 2) % 6 : (i3 + 1) % 6;
-  const [c1, c2, c3] = [i1, i2, i3].map((i) => color(CARD_COLORS[i]));
-  const code = `${(h % 90) + 10}-${String((h >>> 7) % 10000).padStart(4, "0")}`;
-  const abbr = abbreviate(title);
-  const size = Math.min(44, 76 / (abbr.length * 0.46));  // shrink long words to fit the card
-  const lines = wrapWords(title, 13, 3)
-    .map((l, i) => `<text x="114" y="${116 + i * 13}" text-anchor="end" font-size="11" fill="${color("peach")}">${esc(l)}</text>`).join("");
-  const label = kind === "episode" || kind === "show" ? "TV" : kind === "track" ? "AUD" : "FILM";
-  return `<svg class="lcard" viewBox="0 0 120 180" role="img" aria-label="${esc(title)}">
-    <rect width="120" height="180" fill="#000"/>
-    <path d="M0,34 Q0,0 34,0 L113,0 A7,7 0 0 1 113,14 L46,14 Q34,14 34,26 L34,128 L0,128 Z" fill="${c1}"/>
-    <rect x="0" y="132" width="34" height="18" fill="${c2}"/>
-    <rect x="0" y="154" width="34" height="26" fill="${c3}"/>
-    <text x="30" y="176" text-anchor="end" font-size="10" font-weight="600" fill="#000">${label}</text>
-    <text x="114" y="32" text-anchor="end" font-size="10" fill="${color("lavender")}">${code}</text>
-    <text x="114" y="${62 + size * 0.75}" text-anchor="end" font-size="${size.toFixed(1)}" font-weight="700" fill="${c1}">${esc(abbr)}</text>
-    ${lines}
-    <path d="M46,168 L113,168 A6,6 0 0 1 113,180 L46,180 Z" fill="${c2}"/>
-  </svg>`;
+  const c = color(CARD_COLORS[hashStr(title) % CARD_COLORS.length]);  // same show, same color
+  let abbr = abbreviate(title);
+  if (abbr.length > 4) abbr = abbr[0];  // one long word (BLUEY) -> just its initial
+  return `<div class="ltile${abbr.length > 3 ? " long" : ""}" style="background:${c}" title="${esc(title)}">${esc(abbr)}</div>`;
 }
 
 // ---------- plex ----------
@@ -248,7 +216,7 @@ function renderPlex(entry) {
   $("plex-streams").innerHTML = data.streams.length
     ? data.streams.map((s) => `
       <div class="stream">
-        ${lcarsCard(s.title, s.kind)}
+        ${lcarsCard(s.title)}
         <div>
           <div class="stream-title">${esc(s.title)}</div>
           <div class="stream-sub">${esc(s.subtitle)}</div>
@@ -263,7 +231,7 @@ function renderPlex(entry) {
 
   // Scrollable list; only rewrite it when something changed so a scroll in progress isn't disturbed
   const html = data.history.map((h) => `
-    <li>${lcarsCard(h.show, h.kind)}
+    <li>${lcarsCard(h.show)}
       <div class="h-body">
         <div class="h-title">${esc(h.title)}</div>
         <div class="h-meta">${h.time ? fmtAgo(h.time) : ""} · ${esc(h.user)}</div>
@@ -273,21 +241,36 @@ function renderPlex(entry) {
   if (list.dataset.html !== html) { list.innerHTML = html; list.dataset.html = html; }
 }
 
-// After 60 seconds without a touch, scroll Recently Watched back to the top
-let historyTouched = 0;
-["scroll", "touchstart", "wheel", "pointerdown"].forEach((ev) =>
-  $("plex-history").addEventListener(ev, () => { historyTouched = Date.now(); }, { passive: true }));
+// Scrolling lists (Recently Watched, MeshCore): swipe to scroll. After 60 seconds
+// without a touch they glide back to the top.
+let lastTouch = 0;
+const IDLE_MS = 60000;
+["plex-history", "mesh-log"].forEach((id) =>
+  ["scroll", "touchstart", "wheel", "pointerdown"].forEach((ev) =>
+    $(id).addEventListener(ev, () => { lastTouch = Date.now(); }, { passive: true })));
 setInterval(() => {
-  const list = $("plex-history");
-  if (list.scrollTop > 0 && Date.now() - historyTouched > 60000) list.scrollTo({ top: 0, behavior: "smooth" });
+  if (Date.now() - lastTouch < IDLE_MS) return;
+  ["plex-history", "mesh-log"].forEach((id) => {
+    if ($(id).scrollTop > 0) $(id).scrollTo({ top: 0, behavior: "smooth" });
+  });
 }, 5000);
+
+// A tap (not a swipe) on MeshCore / Hilltop switches between them
+function onTap(el, fn) {
+  let x = 0, y = 0;
+  el.addEventListener("pointerdown", (e) => { x = e.clientX; y = e.clientY; });
+  el.addEventListener("click", (e) => {
+    if (Math.abs(e.clientX - x) > 10 || Math.abs(e.clientY - y) > 10) return;  // that was a swipe
+    fn();
+  });
+}
 
 // ---------- meshcore ----------
 
 function renderMesh(entry) {
   const data = panelState($("p-mesh"), entry);
   if (!data) return;
-  $("mesh-log").innerHTML = data.messages.slice(0, 12).map((m) => `
+  const html = data.messages.map((m) => `
     <li>
       <div class="m-top">
         <time>${fmtTime(m.time)}</time>
@@ -297,6 +280,8 @@ function renderMesh(entry) {
       </div>
       <div class="m-text">${esc(m.text)}</div>
     </li>`).join("") || `<li class="empty">NO MESSAGES</li>`;
+  const list = $("mesh-log");
+  if (list.dataset.html !== html) { list.innerHTML = html; list.dataset.html = html; }
 }
 
 // ---------- outside: weather + air quality ----------
@@ -371,7 +356,6 @@ function swapMeshRepeater(show) {
   rpShowing = rpConfigured && (show ?? !rpShowing);
   $("p-mesh").classList.toggle("swap-hidden", rpShowing);
   $("p-repeater").classList.toggle("swap-hidden", !rpShowing);
-  if (!rpShowing) fitList($("mesh-log"));
 }
 
 function renderRepeater(entry) {
@@ -454,17 +438,6 @@ function renderRepeater(entry) {
   $("rp-when").title = d.last_error || "";
 }
 
-// ---------- one-screen mode ----------
-// Remove list items from the end until the list fits its panel, so nothing is cut off halfway.
-// Only matters when the CSS one-screen mode clips the list (on phones everything just scrolls).
-function fitList(list) {
-  const bottom = list.getBoundingClientRect().bottom;
-  let items = [...list.children];
-  while (items.length > 1 && items[items.length - 1].getBoundingClientRect().bottom > bottom + 1) {
-    items.pop().remove();
-  }
-}
-
 // ---------- polling loop ----------
 
 async function poll() {
@@ -479,11 +452,9 @@ async function poll() {
     renderWeather(data.weather);
     renderIndoor(data.indoor);
     renderRepeater(data.repeater);
-    fitList($("mesh-log"));
 
     const systems = ["server", "nas", "mac"];
     const up = systems.filter((k) => data[k].ok).length;
-    $("sys-count").textContent = `${up}/${systems.length} ONLINE`;
     $("link-status").textContent = "LINK ESTABLISHED";
     document.body.classList.remove("stale");
   } catch (err) {
@@ -494,9 +465,10 @@ async function poll() {
 }
 
 setupSystemPanels();
-$("p-mesh").addEventListener("click", () => swapMeshRepeater());
-$("p-repeater").addEventListener("click", () => swapMeshRepeater());
-setInterval(() => swapMeshRepeater(), 20000);
+onTap($("p-mesh"), () => swapMeshRepeater());
+onTap($("p-repeater"), () => swapMeshRepeater());
+// Auto-switch every 20 s, but not while someone is reading/scrolling the messages
+setInterval(() => { if (Date.now() - lastTouch > IDLE_MS) swapMeshRepeater(); }, 20000);
 tickClock();
 setInterval(tickClock, 1000);
 poll();

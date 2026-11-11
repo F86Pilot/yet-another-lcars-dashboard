@@ -29,7 +29,6 @@ COLLECTORS = [
     c.ServerStats(),
     c.NasSnmp(),
     c.MacStats(client),
-    c.Speedtest(client),
     c.Plex(client),
     c.MeshCore(client),
     c.Weather(client),

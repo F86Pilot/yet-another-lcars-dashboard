@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="lcars.css?v=15">
+  <link rel="stylesheet" href="lcars.css?v=16">
 </head>
 <body>
 <div class="lcars">
@@ -43,10 +43,9 @@
       <div class="elbow elbow-top c-purple"></div>
       <nav class="buttons">
         <a href="#p-server" class="block c-blue"><span>01-SYSTEMS</span></a>
-        <a href="#p-speedtest" class="block c-peach"><span>02-SPEED</span></a>
-        <a href="#p-plex" class="block c-orange"><span>03-PLEX</span></a>
-        <a href="#p-mesh" class="block c-tan"><span>04-MESH</span></a>
-        <a href="#p-weather" class="block c-lavender"><span>05-CLIMATE</span></a>
+        <a href="#p-plex" class="block c-orange"><span>02-PLEX</span></a>
+        <a href="#p-mesh" class="block c-tan"><span>03-MESH</span></a>
+        <a href="#p-weather" class="block c-lavender"><span>04-CLIMATE</span></a>
       </nav>
       <div class="block c-purple grow"><span id="sys-count">—</span></div>
     </div>
@@ -66,27 +65,9 @@
         <section class="panel span-4 sys" id="p-nas" data-key="nas" data-color="lavender"></section>
         <section class="panel span-4 sys" id="p-mac" data-key="mac" data-color="peach"></section>
 
-        <!-- Speedtest -->
-        <section class="panel span-4" id="p-speedtest">
-          <h2 class="panel-head"><span class="pill c-orange"></span><span>INTERNET · SPEEDTEST</span><span class="rule c-orange"></span><span class="ptag"></span></h2>
-          <div class="readouts">
-            <div class="readout"><div class="label">DOWNLOAD</div><div class="value" id="st-down">—</div><div class="unit">MBPS</div></div>
-            <div class="readout"><div class="label">UPLOAD</div><div class="value v-blue" id="st-up">—</div><div class="unit">MBPS</div></div>
-            <div class="readout"><div class="label">PING</div><div class="value v-peach" id="st-ping">—</div><div class="unit">MS</div></div>
-          </div>
-          <svg id="st-spark" class="spark spark-tall" viewBox="0 0 300 60" preserveAspectRatio="none" aria-label="Download and upload history"></svg>
-          <div class="foot">
-            <span><i class="key k-orange"></i>DOWN <i class="key k-blue"></i>UP · <span id="st-count">—</span></span>
-          </div>
-          <div class="st-stats">
-            <div><span class="label">AVERAGE</span><b id="st-avg">—</b></div>
-            <div><span class="label">SLOWEST</span><b id="st-low">—</b></div>
-            <div><span class="label">LAST TEST</span><b id="st-time">—</b></div>
-          </div>
-        </section>
 
         <!-- Plex -->
-        <section class="panel span-4" id="p-plex">
+        <section class="panel span-6" id="p-plex">
           <h2 class="panel-head"><span class="pill c-orange"></span><span>PLEX</span><span class="rule c-orange"></span><span class="ptag"></span></h2>
           <div class="libs" id="plex-libs"></div>
           <div class="label sub-head">NOW PLAYING</div>
@@ -96,13 +77,13 @@
         </section>
 
         <!-- MeshCore -->
-        <section class="panel span-4" id="p-mesh">
+        <section class="panel span-6" id="p-mesh">
           <h2 class="panel-head"><span class="pill c-tan"></span><span>MESHCORE TRAFFIC</span><span class="rule c-tan"></span><span class="ptag"></span></h2>
           <ol id="mesh-log" class="mesh"></ol>
         </section>
 
         <!-- Solar repeater: shares the MeshCore spot; tap either panel to switch -->
-        <section class="panel span-4 swap-hidden" id="p-repeater">
+        <section class="panel span-6 swap-hidden" id="p-repeater">
           <h2 class="panel-head"><span class="pill c-tan"></span><span id="rp-name">SOLAR REPEATER</span><span class="rule c-tan"></span><span class="ptag"></span></h2>
           <div class="rp-top">
             <div><div class="label">BATTERY</div><b id="rp-now">—</b></div>
@@ -126,11 +107,11 @@
             <div class="big-temp" id="wx-temp">—</div>
             <div class="wx-detail">
               <div class="wx-sky" id="wx-sky">—</div>
-              <div class="wx-line">FEELS <b id="wx-feels">—</b> · HUMIDITY <b id="wx-hum">—</b> · WIND <b id="wx-wind">—</b></div>
+              <div class="wx-line">FEELS <b id="wx-feels">—</b> · WIND <b id="wx-wind">—</b></div>
+              <div class="wx-line" id="wx-today"></div>
             </div>
             <div class="aqi" id="wx-aqi"><div class="label">AIR QUALITY</div><div class="aqi-value">—</div><div class="aqi-cat"></div></div>
           </div>
-          <div class="wx-days" id="wx-days"></div>
         </section>
 
         <!-- Inside: ecobee, via Home Assistant -->
@@ -162,6 +143,6 @@
   <div class="foot"><span>UPTIME <b class="v-uptime">—</b></span><span class="v-extra"></span></div>
 </template>
 
-<script src="app.js?v=15"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

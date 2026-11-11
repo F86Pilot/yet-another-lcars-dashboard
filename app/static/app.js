@@ -110,28 +110,6 @@ function panelState(panel, entry) {
   return entry.data;
 }
 
-// ---------- speedtest ----------
-
-function renderSpeedtest(entry) {
-  const st = panelState($("p-speedtest"), entry);
-  if (!st) return;
-  const latest = st.latest;
-  $("st-down").textContent = latest.download_mbps.toFixed(0);
-  $("st-up").textContent = latest.upload_mbps.toFixed(0);
-  $("st-ping").textContent = latest.ping_ms.toFixed(0);
-  $("st-time").textContent = fmtAgo(latest.timestamp);
-  const downs = st.history.map((h) => h.download_mbps), ups = st.history.map((h) => h.upload_mbps);
-  const avg = (a) => Math.round(a.reduce((x, y) => x + y, 0) / a.length);
-  $("st-avg").textContent = `↓${avg(downs)} ↑${avg(ups)}`;
-  $("st-low").textContent = `↓${Math.round(Math.min(...downs))} ↑${Math.round(Math.min(...ups))}`;
-  $("st-count").textContent = `LAST ${st.history.length} TESTS`;
-  // Both on one shared scale so you can compare download vs upload directly
-  sparkline($("st-spark"), [
-    { values: st.history.map((h) => h.download_mbps), color: color("orange") },
-    { values: st.history.map((h) => h.upload_mbps), color: color("blue") },
-  ], { min: 0 });
-}
-
 // ---------- system panels (server, NAS, Mac) ----------
 
 function setupSystemPanels() {
@@ -333,7 +311,6 @@ function renderWeather(entry) {
   $("wx-temp").innerHTML = deg(w.temp, w.unit);
   $("wx-sky").textContent = w.sky;
   $("wx-feels").textContent = `${w.feels_like}°`;
-  $("wx-hum").textContent = `${w.humidity}%`;
   $("wx-wind").textContent = `${w.wind} ${w.wind_unit}`;
 
   const box = $("wx-aqi");
@@ -342,13 +319,11 @@ function renderWeather(entry) {
   box.querySelector(".aqi-cat").textContent = w.aqi
     ? `${w.aqi.category}${w.aqi.pm2_5 != null ? ` · PM2.5 ${Math.round(w.aqi.pm2_5)}` : ""}` : "NO DATA";
 
-  $("wx-days").innerHTML = w.days.map((d, i) => {
-    const name = i === 0 ? "TODAY" : new Date(`${d.date}T12:00`).toLocaleDateString([], { weekday: "short" }).toUpperCase();
-    const rain = d.rain_pct ? ` · ${d.rain_pct}% RAIN` : "";
-    return `<div class="wx-day"><div class="label">${name}</div>
-      <b>${d.high}° <span>${d.low}°</span></b>
-      <div class="wx-day-sky">${esc(d.sky)}${rain}</div></div>`;
-  }).join("");
+  // Today only: high / low and chance of rain
+  const d = w.days && w.days[0];
+  $("wx-today").innerHTML = d
+    ? `TODAY <b>${d.high}°</b> / <b class="lo">${d.low}°</b>${d.rain_pct ? ` · <b>${d.rain_pct}%</b> RAIN` : ""}`
+    : "";
 }
 
 // ---------- inside: ecobee via Home Assistant ----------
@@ -363,7 +338,6 @@ function renderIndoor(entry) {
     ? `<div class="room"><div class="label">${esc(r.name)}</div><div class="empty">SENSOR NOT FOUND</div></div>`
     : `<div class="room"><div class="label">${esc(r.name)}</div>
         <div class="big-temp">${deg(r.temp)}</div>
-        ${r.humidity != null ? `<div class="room-meta"><span>HUMIDITY <b>${Math.round(r.humidity)}%</b></span></div>` : ""}
       </div>`).join("");
 
   // One status line for the thermostat itself: what it's doing and what it's set to
@@ -375,8 +349,7 @@ function renderIndoor(entry) {
   $("indoor-hvac").innerHTML = `
     <span class="tag ${esc(action.toLowerCase())}">${esc(action)}</span>
     <span>MODE <b>${esc(t.mode)}</b></span>
-    <span>SET <b>${set}</b></span>
-    ${t.humidity != null ? `<span>HUMIDITY <b>${Math.round(t.humidity)}%</b></span>` : ""}`;
+    <span>SET <b>${set}</b></span>`;
 }
 
 // ---------- solar repeater ----------
@@ -490,7 +463,6 @@ async function poll() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    renderSpeedtest(data.speedtest);
     document.querySelectorAll(".sys").forEach((p) => renderSystem(p, data[p.dataset.key]));
     renderPlex(data.plex);
     renderMesh(data.mesh);

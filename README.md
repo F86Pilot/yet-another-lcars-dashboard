@@ -67,8 +67,8 @@ The LCARS look is pure CSS. There are no images or icon fonts. It uses:
 On the Linux box that will run it (Docker required):
 
 ```bash
-git clone https://github.com/F86Pilot/lcars-dashboard.git
-cd lcars-dashboard
+git clone https://github.com/F86Pilot/yet-another-lcars-dashboard.git
+cd yet-another-lcars-dashboard
 cp .env.example .env      # fill in what you have; leave the rest blank
 docker compose up -d --build
 ```

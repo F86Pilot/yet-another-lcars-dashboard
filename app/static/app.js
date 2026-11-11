@@ -129,7 +129,9 @@ function setupSystemPanels() {
     panel.dataset.view = "overview";
     onTap(panel, () => {
       lastTouch = Date.now();
-      setSysView(panel, SYS_VIEWS[(SYS_VIEWS.indexOf(panel.dataset.view) + 1) % SYS_VIEWS.length]);
+      const next = SYS_VIEWS[(SYS_VIEWS.indexOf(panel.dataset.view) + 1) % SYS_VIEWS.length];
+      chirp(next === "overview" ? "back" : "next");
+      setSysView(panel, next);
     });
   });
 }
@@ -328,6 +330,35 @@ setInterval(() => {
 }, 5000);
 
 // A tap (not a swipe) on MeshCore / Hilltop switches between them
+// ---------- tap sounds ----------
+// Short computer chirps, made on the fly with the Web Audio API (no sound files).
+// Browsers only allow sound after a tap, which is exactly when these play.
+let audio = null;
+const CHIRPS = {
+  next: [[1180, 0.045], [1580, 0.06]],          // step forward / switch
+  back: [[1580, 0.045], [1050, 0.07]],          // back to the overview
+  nav:  [[880, 0.04], [1320, 0.04], [1760, 0.06]],
+};
+function chirp(kind = "next") {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === "suspended") audio.resume();
+    let t = audio.currentTime + 0.01;
+    for (const [freq, dur] of CHIRPS[kind] || CHIRPS.next) {
+      const osc = audio.createOscillator(), gain = audio.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.18, t + 0.008);   // quick attack
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);   // soft tail, no click
+      osc.connect(gain).connect(audio.destination);
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+      t += dur * 0.9;
+    }
+  } catch (e) { /* no audio available: stay silent */ }
+}
+
 function onTap(el, fn) {
   let x = 0, y = 0;
   el.addEventListener("pointerdown", (e) => { x = e.clientX; y = e.clientY; });
@@ -534,8 +565,9 @@ async function poll() {
 }
 
 setupSystemPanels();
-onTap($("p-mesh"), () => swapMeshRepeater());
-onTap($("p-repeater"), () => swapMeshRepeater());
+onTap($("p-mesh"), () => { chirp("next"); swapMeshRepeater(); });
+onTap($("p-repeater"), () => { chirp("back"); swapMeshRepeater(); });
+document.querySelectorAll(".buttons a").forEach((a) => a.addEventListener("click", () => chirp("nav")));
 // Auto-switch every 20 s, but not while someone is reading/scrolling the messages
 setInterval(() => { if (Date.now() - lastTouch > IDLE_MS) swapMeshRepeater(); }, 20000);
 tickClock();

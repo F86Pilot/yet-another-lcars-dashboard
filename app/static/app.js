@@ -17,7 +17,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", 
 function tickClock() {
   const now = new Date();
   $("date").textContent = now.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", year: "numeric" }).toUpperCase();
-  $("time").textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  $("time").textContent = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
 }
 
 // ---------- formatting helpers ----------
@@ -62,7 +62,9 @@ function fmtRate(bytesPerSec) {
 }
 
 function fmtTime(iso) {
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  // 12-hour time without AM/PM, e.g. 8:34
+  const d = new Date(iso);
+  return `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 function fmtAgo(iso) {
@@ -243,10 +245,6 @@ function renderPlex(entry) {
     return;
   }
 
-  $("plex-libs").innerHTML = data.libraries
-    .filter((l) => l.count)
-    .map((l) => `<span class="lib">${esc(l.name.toUpperCase())} <b>${l.count.toLocaleString()}</b></span>`).join("");
-
   $("plex-streams").innerHTML = data.streams.length
     ? data.streams.map((s) => `
       <div class="stream">
@@ -263,14 +261,26 @@ function renderPlex(entry) {
       </div>`).join("")
     : `<div class="empty">NO ACTIVE STREAMS</div>`;
 
-  $("plex-history").innerHTML = data.history.slice(0, 8).map((h) => `
+  // Scrollable list; only rewrite it when something changed so a scroll in progress isn't disturbed
+  const html = data.history.map((h) => `
     <li>${lcarsCard(h.show, h.kind)}
       <div class="h-body">
         <div class="h-title">${esc(h.title)}</div>
         <div class="h-meta">${h.time ? fmtAgo(h.time) : ""} · ${esc(h.user)}</div>
       </div></li>`).join("")
     || `<li class="empty">NO HISTORY YET</li>`;
+  const list = $("plex-history");
+  if (list.dataset.html !== html) { list.innerHTML = html; list.dataset.html = html; }
 }
+
+// After 60 seconds without a touch, scroll Recently Watched back to the top
+let historyTouched = 0;
+["scroll", "touchstart", "wheel", "pointerdown"].forEach((ev) =>
+  $("plex-history").addEventListener(ev, () => { historyTouched = Date.now(); }, { passive: true }));
+setInterval(() => {
+  const list = $("plex-history");
+  if (list.scrollTop > 0 && Date.now() - historyTouched > 60000) list.scrollTo({ top: 0, behavior: "smooth" });
+}, 5000);
 
 // ---------- meshcore ----------
 
@@ -470,7 +480,6 @@ async function poll() {
     renderIndoor(data.indoor);
     renderRepeater(data.repeater);
     fitList($("mesh-log"));
-    fitList($("plex-history"));
 
     const systems = ["server", "nas", "mac"];
     const up = systems.filter((k) => data[k].ok).length;

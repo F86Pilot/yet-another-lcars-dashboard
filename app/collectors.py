@@ -294,7 +294,7 @@ class Plex(Collector):
     async def collect(self):
         activity, history, libraries = await asyncio.gather(
             self._cmd("get_activity"),
-            self._cmd("get_history", length=8),
+            self._cmd("get_history", length=25),
             self._cmd("get_libraries"),
         )
         streams = []

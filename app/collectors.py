@@ -292,10 +292,9 @@ class Plex(Collector):
         return body["data"]
 
     async def collect(self):
-        activity, history, libraries = await asyncio.gather(
+        activity, history = await asyncio.gather(
             self._cmd("get_activity"),
             self._cmd("get_history", length=25),
-            self._cmd("get_libraries"),
         )
         streams = []
         for s in activity.get("sessions", []):
@@ -310,6 +309,8 @@ class Plex(Collector):
                 "decision": decision.upper().replace("COPY", "DIRECT STREAM"),
                 "quality": s.get("stream_video_full_resolution") or s.get("quality_profile"),
                 "progress": int(s.get("progress_percent") or 0),
+                "position_ms": int(s.get("view_offset") or 0),
+                "duration_ms": int(s.get("duration") or 0),
                 "kind": s.get("media_type"),
             })
         plays = []
@@ -322,10 +323,11 @@ class Plex(Collector):
                 "percent": h.get("percent_complete"),
                 "show": h.get("grandparent_title") or h.get("title"),
                 "kind": h.get("media_type"),
+                # second line: "S05E19 · Ties of Blood and Water" for episodes, the year for movies
+                "detail": "S{:0>2}E{:0>2} · {}".format(h.get("parent_media_index"), h.get("media_index"), h.get("title"))
+                          if h.get("media_type") == "episode" else str(h.get("year") or "MOVIE"),
             })
-        libs = [{"name": l["section_name"], "type": l["section_type"], "count": int(l.get("count") or 0)}
-                for l in libraries]
-        return {"streams": streams, "history": plays, "libraries": libs}
+        return {"streams": streams, "history": plays}
 
 
 # ------------------------------------------------------------------

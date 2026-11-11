@@ -95,10 +95,13 @@ function sparkline(svg, series, { min, max } = {}) {
   }).join("");
 }
 
-function setMeter(el, pct, { hot = 75, crit = 90 } = {}) {
-  el.style.width = `${Math.min(100, Math.max(0, pct))}%`;
-  el.classList.toggle("hot", pct >= hot && pct < crit);
-  el.classList.toggle("crit", pct >= crit);
+// Segmented LCARS meter: N blocks that light up; turns orange/red when high
+const SEGS = 20;
+function setSegs(el, pct, { hot = 75, crit = 90 } = {}) {
+  if (el.children.length !== SEGS) el.innerHTML = "<i></i>".repeat(SEGS);
+  const lit = Math.round((Math.min(100, Math.max(0, pct)) / 100) * SEGS);
+  const cls = pct >= crit ? "crit" : pct >= hot ? "hot" : "on";
+  [...el.children].forEach((seg, i) => { seg.className = i < Math.max(lit, pct > 0 ? 1 : 0) ? cls : ""; });
 }
 
 // Mark a panel as working / down / not set up, and return its data (or null).
@@ -116,12 +119,7 @@ function panelState(panel, entry) {
 
 function setupSystemPanels() {
   const tpl = $("sys-template");
-  document.querySelectorAll(".sys").forEach((panel) => {
-    panel.appendChild(tpl.content.cloneNode(true));
-    const c = panel.dataset.color;
-    panel.querySelector(".pill").classList.add(`c-${c}`);
-    panel.querySelector(".rule").classList.add(`c-${c}`);
-  });
+  document.querySelectorAll(".sys").forEach((panel) => panel.appendChild(tpl.content.cloneNode(true)));
 }
 
 function renderSystem(panel, entry) {
@@ -130,25 +128,25 @@ function renderSystem(panel, entry) {
   if (!s) return;
   q(".sys-name").textContent = s.label;
 
-  setMeter(q(".f-cpu"), s.cpu_percent);
+  setSegs(q(".s-cpu"), s.cpu_percent);
   q(".v-cpu").textContent = `${Math.round(s.cpu_percent)}%`;
-  setMeter(q(".f-ram"), (s.ram.used / s.ram.total) * 100, { hot: 85, crit: 95 });
+  setSegs(q(".s-ram"), (s.ram.used / s.ram.total) * 100, { hot: 85, crit: 95 });
   q(".v-ram").textContent = fmtRam(s.ram.used, s.ram.total);
-  setMeter(q(".f-disk"), (s.disk.used / s.disk.total) * 100, { hot: 80, crit: 92 });
+  setSegs(q(".s-disk"), (s.disk.used / s.disk.total) * 100, { hot: 80, crit: 92 });
   q(".v-disk").textContent = fmtUsed(s.disk.used, s.disk.total);
 
-  q(".v-rx").textContent = `↓ ${fmtRate(s.net.rx_bps)}`;
-  q(".v-tx").textContent = `↑ ${fmtRate(s.net.tx_bps)}`;
+  q(".v-rx").textContent = fmtRate(s.net.rx_bps);
+  q(".v-tx").textContent = fmtRate(s.net.tx_bps);
   sparkline(q(".spark-net"), [
     { values: s.net.rx_hist, color: color("orange") },
     { values: s.net.tx_hist, color: color("blue") },
   ], { min: 0 });
 
-  q(".v-uptime").textContent = fmtUptime(s.uptime_seconds);
-  const extra = [s.net.iface?.toUpperCase()];
-  if (s.temp_c != null) extra.unshift(`${s.temp_c}°C`);
-  if (s.healthy === false) extra.unshift("⚠ DEGRADED");
-  q(".v-extra").textContent = extra.filter(Boolean).join(" · ");
+  // Header end cap: uptime and temperature, e.g. "47D · 59°"
+  const cap = [fmtUptime(s.uptime_seconds).split(" ")[0]];
+  if (s.temp_c != null) cap.push(`${Math.round(s.temp_c)}°`);
+  if (s.healthy === false) cap.unshift("⚠ DEGRADED");
+  q(".ph-cap").textContent = cap.join(" · ");
 }
 
 // ---------- LCARS title cards (stand-ins for Plex posters) ----------
@@ -206,6 +204,7 @@ function lcarsCard(title) {
 
 // ---------- plex ----------
 
+const fmtMin = (ms) => Math.round(ms / 60000);
 function renderPlex(entry) {
   const data = panelState($("p-plex"), entry);
   if (!data) {
@@ -217,25 +216,35 @@ function renderPlex(entry) {
     ? data.streams.map((s) => `
       <div class="stream">
         ${lcarsCard(s.title)}
-        <div>
+        <div class="stream-body">
           <div class="stream-title">${esc(s.title)}</div>
           <div class="stream-sub">${esc(s.subtitle)}</div>
-          <div class="stream-meta">${esc(s.user)} · ${esc(s.player)}${s.state === "paused" ? " · PAUSED" : ""}</div>
-          <div class="stream-meta">
-            <span class="tag ${s.decision === "TRANSCODE" ? "transcode" : ""}">${esc(s.decision)}</span>
-            ${s.quality ? `<span class="tag">${esc(String(s.quality).toUpperCase())}</span>` : ""}</div>
-          <div class="meter"><div class="fill" style="width:${s.progress}%"></div></div>
+          <div class="chips">
+            <span class="chip c-blue first ${s.decision === "TRANSCODE" ? "transcode" : ""}">${esc(s.decision)}</span>
+            ${s.quality ? `<span class="chip c-peach">${esc(String(s.quality).toUpperCase())}</span>` : ""}
+            <span class="chip c-purple last">${esc(String(s.player || "").toUpperCase())}</span>
+          </div>
+          <div class="who">${esc(String(s.user || "").toUpperCase())}${s.state === "paused" ? " · PAUSED" : ""}</div>
+          <div class="meter-row prog">
+            <div class="segs"></div>
+            <span class="mval">${s.duration_ms ? `${fmtMin(s.position_ms)} / ${fmtMin(s.duration_ms)} MIN` : `${s.progress}%`}</span>
+          </div>
         </div>
       </div>`).join("")
     : `<div class="empty">NO ACTIVE STREAMS</div>`;
+  $("plex-streams").querySelectorAll(".prog .segs").forEach((el, i) => setSegs(el, data.streams[i].progress, { hot: 101, crit: 101 }));
 
   // Scrollable list; only rewrite it when something changed so a scroll in progress isn't disturbed
-  const html = data.history.map((h) => `
+  // Tautulli logs a new row each time a stop/resume happens; show each episode once
+  const plays = data.history.filter((h, i, all) => !all.slice(0, i).some((o) =>
+    o.show === h.show && o.detail === h.detail && o.user === h.user));
+  const html = plays.map((h) => `
     <li>${lcarsCard(h.show)}
       <div class="h-body">
-        <div class="h-title">${esc(h.title)}</div>
-        <div class="h-meta">${h.time ? fmtAgo(h.time) : ""} · ${esc(h.user)}</div>
-      </div></li>`).join("")
+        <div class="h-title">${esc(h.show)}</div>
+        <div class="h-meta">${esc(h.detail || "")}</div>
+      </div>
+      <span class="ago">${h.time ? fmtAgo(h.time) : ""} · ${esc(String(h.user || "").toUpperCase())}</span></li>`).join("")
     || `<li class="empty">NO HISTORY YET</li>`;
   const list = $("plex-history");
   if (list.dataset.html !== html) { list.innerHTML = html; list.dataset.html = html; }
@@ -274,7 +283,7 @@ function renderMesh(entry) {
     <li>
       <div class="m-top">
         <time>${fmtTime(m.time)}</time>
-        <span class="m-where ${m.where === "DIRECT" ? "dm" : ""}">${esc(m.where.toUpperCase())}</span>
+        <span class="m-where ${m.where === "DIRECT" ? "dm" : m.where.startsWith("#") ? "" : "pub"}">${esc(m.where.toUpperCase())}</span>
         <span class="m-sender">${esc(m.sender)}</span>
         ${m.snr != null ? `<span class="m-sig">SNR ${m.snr} · ${m.hops ?? "?"} HOPS</span>` : ""}
       </div>
@@ -286,7 +295,7 @@ function renderMesh(entry) {
 
 // ---------- outside: weather + air quality ----------
 
-const deg = (v, unit = "") => (v == null ? "—" : `${Math.round(v)}<sup>°${unit}</sup>`);
+const deg = (v) => (v == null ? "—" : `${Math.round(v)}<span class="dg">°</span>`);
 
 function aqiClass(v) {
   if (v <= 50) return "good";
@@ -303,16 +312,16 @@ function renderWeather(entry) {
     return;
   }
   $("wx-name").textContent = `OUTSIDE · ${w.label.toUpperCase()}`;
-  $("wx-temp").innerHTML = deg(w.temp, w.unit);
+  $("wx-temp").innerHTML = deg(w.temp);
   $("wx-sky").textContent = w.sky;
   $("wx-feels").textContent = `${w.feels_like}°`;
   $("wx-wind").textContent = `${w.wind} ${w.wind_unit}`;
 
   const box = $("wx-aqi");
-  box.className = "aqi" + (w.aqi ? ` ${aqiClass(w.aqi.value)}` : "");
-  box.querySelector(".aqi-value").textContent = w.aqi ? w.aqi.value : "—";
-  box.querySelector(".aqi-cat").textContent = w.aqi
-    ? `${w.aqi.category}${w.aqi.pm2_5 != null ? ` · PM2.5 ${Math.round(w.aqi.pm2_5)}` : ""}` : "NO DATA";
+  box.className = "bignum aqi" + (w.aqi ? ` ${aqiClass(w.aqi.value)}` : "");
+  box.textContent = w.aqi ? w.aqi.value : "—";
+  $("wx-air").innerHTML = w.aqi
+    ? `AIR <b>${esc(w.aqi.category)}</b>${w.aqi.pm2_5 != null ? ` · PM2.5 <b>${Math.round(w.aqi.pm2_5)}</b>` : ""}` : "AIR QUALITY: NO DATA";
 
   // Today only: high / low and chance of rain
   const d = w.days && w.days[0];
@@ -323,28 +332,27 @@ function renderWeather(entry) {
 
 // ---------- inside: ecobee via Home Assistant ----------
 
+const ROOM_COLORS = ["c-peach", "c-blue", "c-tan", "c-lavender"];
 function renderIndoor(entry) {
   const data = panelState($("p-indoor"), entry);
   if (!data) {
     if (!entry.configured) $("indoor-rooms").innerHTML = `<div class="empty">FINISH HOME ASSISTANT SETUP TO ENABLE</div>`;
     return;
   }
-  $("indoor-rooms").innerHTML = data.rooms.map((r) => r.missing
-    ? `<div class="room"><div class="label">${esc(r.name)}</div><div class="empty">SENSOR NOT FOUND</div></div>`
-    : `<div class="room"><div class="label">${esc(r.name)}</div>
-        <div class="big-temp">${deg(r.temp)}</div>
-      </div>`).join("");
+  $("indoor-rooms").innerHTML = data.rooms.map((r, i) => `
+    <div class="cell"><div class="label">${esc(r.name.toUpperCase())}</div>
+      <div class="bignum ${r.missing ? "c-dim" : ROOM_COLORS[i % ROOM_COLORS.length]}">${r.missing ? "—" : deg(r.temp)}</div></div>`).join("");
 
-  // One status line for the thermostat itself: what it's doing and what it's set to
+  // Thermostat: what it's doing, what it's set to
   const t = data.thermostat;
   if (!t) { $("indoor-hvac").innerHTML = ""; return; }
   const set = t.target != null ? `${Math.round(t.target)}°`
     : t.target_low != null ? `${Math.round(t.target_low)}–${Math.round(t.target_high)}°` : "—";
   const action = t.mode === "OFF" ? "OFF" : (t.action || t.mode);
   $("indoor-hvac").innerHTML = `
-    <span class="tag ${esc(action.toLowerCase())}">${esc(action)}</span>
-    <span>MODE <b>${esc(t.mode)}</b></span>
-    <span>SET <b>${set}</b></span>`;
+    <div class="headline ${esc(action.toLowerCase())}">${esc(action)}</div>
+    <div class="line">SET TO <b>${set}</b></div>
+    <div class="line">MODE <b>${esc(t.mode)}</b></div>`;
 }
 
 // ---------- solar repeater ----------

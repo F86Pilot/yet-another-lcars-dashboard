@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="lcars.css?v=20">
+  <link rel="stylesheet" href="lcars.css?v=22">
 </head>
 <body>
 <div class="lcars">
@@ -61,29 +61,27 @@
       <main class="panels">
 
         <!-- Systems: filled in by app.js from the template below -->
-        <section class="panel span-4 sys" id="p-server" data-key="server" data-color="blue"></section>
-        <section class="panel span-4 sys" id="p-nas" data-key="nas" data-color="lavender"></section>
-        <section class="panel span-4 sys" id="p-mac" data-key="mac" data-color="peach"></section>
-
+        <section class="panel span-4 sys" id="p-server" data-key="server" style="--c:var(--blue)"></section>
+        <section class="panel span-4 sys" id="p-nas" data-key="nas" style="--c:var(--lavender)"></section>
+        <section class="panel span-4 sys" id="p-mac" data-key="mac" style="--c:var(--peach)"></section>
 
         <!-- Plex -->
-        <section class="panel span-6" id="p-plex">
-          <h2 class="panel-head"><span class="pill c-orange"></span><span>PLEX</span><span class="rule c-orange"></span><span class="ptag"></span></h2>
-          <div class="label sub-head">NOW PLAYING</div>
+        <section class="panel span-6" id="p-plex" style="--c:var(--orange)">
+          <h2 class="panel-head"><span class="ph-name">PLEX</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
           <div id="plex-streams" class="streams"></div>
-          <div class="label sub-head">RECENTLY WATCHED</div>
+          <div class="sub-bar"><span>RECENTLY WATCHED</span><i></i></div>
           <ol id="plex-history" class="history"></ol>
         </section>
 
         <!-- MeshCore -->
-        <section class="panel span-6" id="p-mesh">
-          <h2 class="panel-head"><span class="pill c-tan"></span><span>MESHCORE TRAFFIC</span><span class="rule c-tan"></span><span class="ptag"></span></h2>
+        <section class="panel span-6" id="p-mesh" style="--c:var(--tan)">
+          <h2 class="panel-head"><span class="ph-name">MESHCORE</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
           <ol id="mesh-log" class="mesh"></ol>
         </section>
 
         <!-- Solar repeater: shares the MeshCore spot; tap either panel to switch -->
-        <section class="panel span-6 swap-hidden" id="p-repeater">
-          <h2 class="panel-head"><span class="pill c-tan"></span><span id="rp-name">SOLAR REPEATER</span><span class="rule c-tan"></span><span class="ptag"></span></h2>
+        <section class="panel span-6 swap-hidden" id="p-repeater" style="--c:var(--tan)">
+          <h2 class="panel-head"><span class="ph-name" id="rp-name">SOLAR REPEATER</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
           <div class="rp-top">
             <div><div class="label">BATTERY</div><b id="rp-now">—</b></div>
             <div><div class="label">PEAK TODAY</div><b id="rp-peak">—</b></div>
@@ -100,24 +98,27 @@
         </section>
 
         <!-- Outside: weather + air quality (Open-Meteo) -->
-        <section class="panel span-6" id="p-weather">
-          <h2 class="panel-head"><span class="pill c-lavender"></span><span id="wx-name">OUTSIDE</span><span class="rule c-lavender"></span><span class="ptag"></span></h2>
-          <div class="wx-now">
-            <div class="big-temp" id="wx-temp">—</div>
-            <div class="wx-detail">
-              <div class="wx-sky" id="wx-sky">—</div>
-              <div class="wx-line">FEELS <b id="wx-feels">—</b> · WIND <b id="wx-wind">—</b></div>
-              <div class="wx-line" id="wx-today"></div>
+        <section class="panel span-6" id="p-weather" style="--c:var(--lavender)">
+          <h2 class="panel-head"><span class="ph-name" id="wx-name">OUTSIDE</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
+          <div class="clim">
+            <div class="cell"><div class="label">NOW</div><div class="bignum c-orange" id="wx-temp">—</div></div>
+            <div class="cell"><div class="label">AIR QUALITY</div><div class="bignum aqi" id="wx-aqi">—</div></div>
+            <div class="side-info">
+              <div class="headline" id="wx-sky">—</div>
+              <div class="line">FEELS <b id="wx-feels">—</b> · WIND <b id="wx-wind">—</b></div>
+              <div class="line" id="wx-today"></div>
+              <div class="line" id="wx-air"></div>
             </div>
-            <div class="aqi" id="wx-aqi"><div class="label">AIR QUALITY</div><div class="aqi-value">—</div><div class="aqi-cat"></div></div>
           </div>
         </section>
 
-        <!-- Inside: ecobee, via Home Assistant -->
-        <section class="panel span-6" id="p-indoor">
-          <h2 class="panel-head"><span class="pill c-purple"></span><span>INDOOR CLIMATE</span><span class="rule c-purple"></span><span class="ptag"></span></h2>
-          <div class="rooms" id="indoor-rooms"></div>
-          <div class="hvac" id="indoor-hvac"></div>
+        <!-- Inside: thermostat sensors, via Home Assistant -->
+        <section class="panel span-6" id="p-indoor" style="--c:var(--purple)">
+          <h2 class="panel-head"><span class="ph-name">INDOOR CLIMATE</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
+          <div class="clim">
+            <div class="clim-cells" id="indoor-rooms"></div>
+            <div class="side-info" id="indoor-hvac"></div>
+          </div>
         </section>
 
       </main>
@@ -126,22 +127,19 @@
 </div>
 
 <template id="sys-template">
-  <h2 class="panel-head"><span class="pill"></span><span class="sys-name">—</span><span class="rule"></span><span class="ptag"></span></h2>
+  <h2 class="panel-head"><span class="ph-name sys-name">—</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
   <div class="meters">
-    <div class="meter-row"><span class="label">CPU</span><div class="meter"><div class="fill f-cpu"></div></div><span class="mval v-cpu">—</span></div>
-    <div class="meter-row"><span class="label">MEM</span><div class="meter"><div class="fill f-ram"></div></div><span class="mval v-ram">—</span></div>
-    <div class="meter-row"><span class="label">DISK</span><div class="meter"><div class="fill f-disk"></div></div><span class="mval v-disk">—</span></div>
+    <div class="meter-row"><span class="label">CPU</span><div class="segs s-cpu"></div><span class="mval v-cpu">—</span></div>
+    <div class="meter-row"><span class="label">MEM</span><div class="segs s-ram"></div><span class="mval v-ram">—</span></div>
+    <div class="meter-row"><span class="label">DSK</span><div class="segs s-disk"></div><span class="mval v-disk">—</span></div>
   </div>
-  <div class="net">
-    <div class="net-rates">
-      <span><i class="key k-orange"></i><b class="v-rx">—</b></span>
-      <span><i class="key k-blue"></i><b class="v-tx">—</b></span>
-    </div>
-    <svg class="spark spark-net" viewBox="0 0 300 60" preserveAspectRatio="none"></svg>
+  <div class="rates">
+    <div class="rate rx"><span>↓</span><b class="v-rx">—</b></div>
+    <div class="rate tx"><span>↑</span><b class="v-tx">—</b></div>
   </div>
-  <div class="foot"><span>UPTIME <b class="v-uptime">—</b></span><span class="v-extra"></span></div>
+  <svg class="spark spark-net" viewBox="0 0 300 60" preserveAspectRatio="none"></svg>
 </template>
 
-<script src="app.js?v=20"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>

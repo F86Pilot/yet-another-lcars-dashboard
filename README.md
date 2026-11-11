@@ -8,7 +8,7 @@ A home lab status board styled after the LCARS computer screens from *Star Trek*
 
 ![Tapped into detail views: top apps per machine, a Plex stream in progress and the solar repeater panel](docs/tablet-detail.jpg)
 
-*(Names, places and mesh messages are blurred in the photos.)*
+*(Usernames and places are blurred in the photos.)*
 
 ## What it's built for
 

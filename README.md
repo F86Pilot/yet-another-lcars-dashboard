@@ -8,7 +8,7 @@ Live at **http://your-server:8088**
 |---|---|---|
 | SERVERMCSERVEFACE | Read directly by the backend (it runs on this machine). Tap for top apps by CPU / memory / network: needs `pid: host` and the `cap_add` list in docker-compose.yml; network per app comes from `nethogs` | 2 s |
 | SMARTNAS | SNMP from the Synology (community in `.env`). Tap for top processes by CPU / memory, and connections per service (Synology has no per-app bandwidth) | 5 s (top apps 15 s) |
-| MAC MINI M4 | Helper on the Mac at :8089 (`mac-helper/`). Tap for top apps; network per app uses macOS `nettop`. After changing the helper, re-run `bash mac-helper/install.sh` | 5 s |
+| MAC MINI M4 | Helper on the Mac at :8089 (`mac-helper/`). CPU temperature needs `brew install macmon`. Tap for top apps; network per app uses macOS `nettop`. After changing the helper, re-run `bash mac-helper/install.sh` | 5 s |
 | Plex | Tautulli API (:8181, in `~/tautulli` on the server). Tiles with the show's initials, drawn by `lcarsCard()` in app.js | 15 s |
 | MeshCore | RemoteTerm API (:8080) | 15 s |
 | Outside | Open-Meteo weather + air quality (internet, free, no key). Location = `WEATHER_LAT/LON` | 10 min |

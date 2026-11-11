@@ -23,6 +23,30 @@ lock = threading.Lock()
 latest = {}
 top = {"cpu": [], "mem": [], "net": [], "net_kind": "apps"}
 TOP_N = 5
+cpu_temp = None
+# macmon (brew install macmon) reads Apple Silicon temperature sensors without sudo.
+# LaunchAgents don't get Homebrew's PATH, so look in the usual places.
+MACMON = next((p for p in ("/opt/homebrew/bin/macmon", "/usr/local/bin/macmon") if os.path.exists(p)), None)
+
+
+def temp_forever():
+    """Keep one macmon running; it prints a JSON line every 5 s with the CPU temperature."""
+    global cpu_temp
+    while MACMON:
+        try:
+            proc = subprocess.Popen([MACMON, "pipe", "-i", "5000"], stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, text=True)
+            for line in proc.stdout:
+                try:
+                    t = json.loads(line).get("temp", {}).get("cpu_temp_avg")
+                    cpu_temp = round(t) if t else None
+                except ValueError:
+                    continue
+            proc.wait()
+        except Exception:
+            pass
+        cpu_temp = None
+        time.sleep(30)   # macmon stopped: try again later
 
 
 def app_label(name):
@@ -109,7 +133,7 @@ def sample_forever():
             "ram": {"used": vm.total - vm.available, "total": vm.total},
             "disk": {"used": du.total - du.free, "total": du.total},
             "uptime_seconds": int(time.time() - psutil.boot_time()),
-            "temp_c": None,
+            "temp_c": cpu_temp,
             "net": {"iface": iface, "rx_bps": round(rx), "tx_bps": round(tx),
                     "rx_hist": rx_hist, "tx_hist": tx_hist},
         }
@@ -140,4 +164,5 @@ if __name__ == "__main__":
     threading.Thread(target=sample_forever, daemon=True).start()
     threading.Thread(target=top_procs_forever, daemon=True).start()
     threading.Thread(target=top_net_forever, daemon=True).start()
+    threading.Thread(target=temp_forever, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

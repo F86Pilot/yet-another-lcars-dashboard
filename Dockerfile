@@ -1,9 +1,9 @@
 # Small official Python image
 FROM python:3.12-slim
 
-# snmpget (NAS panel)
+# snmpget (NAS panel), nethogs (server network-by-app view)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends snmp \
+ && apt-get install -y --no-install-recommends snmp nethogs \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

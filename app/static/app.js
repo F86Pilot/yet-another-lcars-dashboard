@@ -117,16 +117,78 @@ function panelState(panel, entry) {
 
 // ---------- system panels (server, NAS, Mac) ----------
 
+// Tapping a system panel steps through what's using it: CPU → MEMORY → NETWORK → back.
+const SYS_VIEWS = ["overview", "cpu", "mem", "net"];
+const VIEW_NAMES = { cpu: "CPU", mem: "MEMORY", net: "NETWORK" };
+const lastSys = {};   // latest data per panel, so a tap redraws right away
+
 function setupSystemPanels() {
   const tpl = $("sys-template");
-  document.querySelectorAll(".sys").forEach((panel) => panel.appendChild(tpl.content.cloneNode(true)));
+  document.querySelectorAll(".sys").forEach((panel) => {
+    panel.appendChild(tpl.content.cloneNode(true));
+    panel.dataset.view = "overview";
+    onTap(panel, () => {
+      lastTouch = Date.now();
+      setSysView(panel, SYS_VIEWS[(SYS_VIEWS.indexOf(panel.dataset.view) + 1) % SYS_VIEWS.length]);
+    });
+  });
+}
+
+function setSysView(panel, view) {
+  panel.dataset.view = view;
+  panel.querySelector(".sys-overview").hidden = view !== "overview";
+  panel.querySelector(".tops").hidden = view === "overview";
+  const s = lastSys[panel.id];
+  if (s) renderSysView(panel, s);
+}
+
+const fmtMbps = (bps) => fmtRate(bps);
+function renderSysView(panel, s) {
+  const view = panel.dataset.view;
+  panel.querySelector(".sys-name").textContent = view === "overview" ? s.label : `${s.label} · ${VIEW_NAMES[view]}`;
+  if (view === "overview") return;
+  // Names are shown in capitals, so merge ones that differ only by case ("Claude" + "claude")
+  const merge = (list) => list && Object.values(list.reduce((acc, x) => {
+    const k = x.name.toUpperCase(), a = acc[k] || (acc[k] = { name: x.name, value: 0, rx: 0, tx: 0 });
+    a.value += x.value || 0; a.rx += x.rx || 0; a.tx += x.tx || 0;
+    return acc;
+  }, {})).sort((a, b) => (b.value + b.rx + b.tx) - (a.value + a.rx + a.tx));
+  const raw = s.top || {};
+  const t = { ...raw, cpu: merge(raw.cpu), mem: merge(raw.mem), net: merge(raw.net) };
+  let rows = [], empty = "NOTHING BUSY RIGHT NOW";
+  if (view === "cpu") {
+    const scale = Math.max(10, ...(t.cpu || []).map((x) => x.value));
+    rows = (t.cpu || []).map((x) => ({ name: x.name, pct: (x.value / scale) * 100, val: `${x.value < 10 ? x.value.toFixed(1) : Math.round(x.value)}%` }));
+  } else if (view === "mem") {
+    const scale = Math.max(s.ram.total * 0.1, ...(t.mem || []).map((x) => x.value));
+    rows = (t.mem || []).map((x) => ({ name: x.name, pct: (x.value / scale) * 100, val: fmtBytes(x.value) }));
+  } else if (t.net_kind === "services") {
+    // The NAS can't split bandwidth by app, so show who's connected to which service
+    const scale = Math.max(1, ...(t.net || []).map((x) => x.value));
+    rows = (t.net || []).map((x) => ({ name: x.name, pct: (x.value / scale) * 100, val: `${x.value} CONN` }));
+    empty = "NO ACTIVE CONNECTIONS";
+  } else if (t.net == null) {
+    empty = "NETWORK DETAIL UNAVAILABLE";
+  } else {
+    const scale = Math.max(125000, ...t.net.map((x) => x.rx + x.tx));   // at least 1 Mbps full scale
+    rows = t.net.map((x) => ({
+      name: x.name, pct: ((x.rx + x.tx) / scale) * 100,
+      val: x.rx >= x.tx ? `↓ ${fmtMbps(x.rx)}` : `↑ ${fmtMbps(x.tx)}`,
+    }));
+  }
+  const list = panel.querySelector(".tops");
+  list.innerHTML = rows.length
+    ? rows.map((x) => `<li><span class="t-name">${esc(x.name.toUpperCase())}</span><div class="segs"></div><span class="mval">${esc(x.val)}</span></li>`).join("")
+    : `<li class="empty">${empty}</li>`;
+  list.querySelectorAll(".segs").forEach((el, i) => setSegs(el, Math.max(rows[i].pct, 1), { hot: 101, crit: 101 }));
 }
 
 function renderSystem(panel, entry) {
   const q = (sel) => panel.querySelector(sel);
   const s = panelState(panel, entry);
   if (!s) return;
-  q(".sys-name").textContent = s.label;
+  lastSys[panel.id] = s;
+  renderSysView(panel, s);
 
   setSegs(q(".s-cpu"), s.cpu_percent);
   q(".v-cpu").textContent = `${Math.round(s.cpu_percent)}%`;
@@ -259,6 +321,7 @@ const IDLE_MS = 60000;
     $(id).addEventListener(ev, () => { lastTouch = Date.now(); }, { passive: true })));
 setInterval(() => {
   if (Date.now() - lastTouch < IDLE_MS) return;
+  document.querySelectorAll(".sys").forEach((p) => { if (p.dataset.view !== "overview") setSysView(p, "overview"); });
   ["plex-history", "mesh-log"].forEach((id) => {
     if ($(id).scrollTop > 0) $(id).scrollTo({ top: 0, behavior: "smooth" });
   });

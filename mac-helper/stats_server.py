@@ -1,12 +1,17 @@
 """
 Mac Mini stats helper for the LCARS dashboard.
 
-Serves http://<mac>:8089/stats as JSON: CPU, memory, disk, uptime, network.
+Serves http://<mac>:8089/stats as JSON: CPU, memory, disk, uptime, network,
+plus the top apps by CPU, memory and network (for the tap-through views).
 Installed as a LaunchAgent by install.sh so it starts at login.
 """
 import json
+import os
+import re
+import subprocess
 import threading
 import time
+from collections import defaultdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import psutil
@@ -16,6 +21,67 @@ DISK_PATH = "/System/Volumes/Data"  # where your files actually live on modern m
 
 lock = threading.Lock()
 latest = {}
+top = {"cpu": [], "mem": [], "net": [], "net_kind": "apps"}
+TOP_N = 5
+
+
+def app_label(name):
+    """Group helpers under their app: "Google Chrome Helper (Renderer)" -> "Google Chrome"."""
+    return re.sub(r" Helper.*$|: .*$", "", (name or "?").strip())
+
+
+def ranked(totals):
+    return [{"name": k, "value": v} for k, v in sorted(totals.items(), key=lambda kv: -kv[1])[:TOP_N] if v > 0]
+
+
+def names_by_pid():
+    out = {}
+    for p in psutil.process_iter(["name"]):
+        out[p.pid] = app_label(p.info["name"])
+    return out
+
+
+def top_procs_forever():
+    """Every 4 s: CPU (% of the whole Mac) and memory per app."""
+    ncpu = psutil.cpu_count() or 1
+    while True:
+        cpu, mem = defaultdict(float), defaultdict(int)
+        for p in psutil.process_iter(["name", "memory_info"]):
+            try:
+                label = app_label(p.info["name"])
+                cpu[label] += p.cpu_percent(None) / ncpu   # psutil remembers each process between rounds
+                if p.info["memory_info"]:
+                    mem[label] += p.info["memory_info"].rss
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        with lock:
+            top["cpu"], top["mem"] = ranked(cpu), ranked(mem)
+        time.sleep(4)
+
+
+def top_net_forever():
+    """Per-app network using macOS's built-in nettop: two 3-second samples, keep the second (the change)."""
+    while True:
+        try:
+            out = subprocess.run(["nettop", "-P", "-L", "2", "-d", "-s", "3", "-x", "-J", "bytes_in,bytes_out"],
+                                 capture_output=True, text=True, timeout=20).stdout
+            block = out.split(",bytes_in,bytes_out,")[-1]
+            pids = names_by_pid()
+            rows = defaultdict(lambda: [0, 0])
+            for line in block.strip().splitlines():
+                parts = line.split(",")
+                if len(parts) < 3 or not parts[1].isdigit():
+                    continue
+                name, _, pid = parts[0].rpartition(".")
+                label = pids.get(int(pid), app_label(name)) if pid.isdigit() else app_label(parts[0])
+                rows[label][0] += int(parts[1]) / 3
+                rows[label][1] += int(parts[2]) / 3
+            best = sorted(rows.items(), key=lambda kv: -(kv[1][0] + kv[1][1]))[:TOP_N]
+            with lock:
+                top["net"] = [{"name": k, "rx": round(rx), "tx": round(tx)} for k, (rx, tx) in best if rx + tx >= 500]
+        except Exception:
+            pass
+        time.sleep(3)
 
 
 def sample_forever():
@@ -48,6 +114,7 @@ def sample_forever():
                     "rx_hist": rx_hist, "tx_hist": tx_hist},
         }
         with lock:
+            data["top"] = dict(top)
             latest.clear()
             latest.update(data)
 
@@ -71,4 +138,6 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     threading.Thread(target=sample_forever, daemon=True).start()
+    threading.Thread(target=top_procs_forever, daemon=True).start()
+    threading.Thread(target=top_net_forever, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

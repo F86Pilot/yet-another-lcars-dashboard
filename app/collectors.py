@@ -11,8 +11,10 @@ Settings come from environment variables, which Docker loads from the .env file.
 """
 import asyncio
 import os
+import re
+import shutil
 import time
-from collections import deque
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 
 import httpx
@@ -89,6 +91,119 @@ def cpu_temperature():
 # servermcserveface (the machine this backend runs on)
 # ------------------------------------------------------------------
 
+# ------------------------------------------------------------------
+# "What's using it": top apps by CPU, memory and network
+# ------------------------------------------------------------------
+
+TOP_N = 5
+INTERPRETERS = ("python", "node", "java", "bun", "ruby", "perl")
+
+
+def app_label(name, cmdline=None, exe=None):
+    """A friendly app name. Groups helpers/workers under their app
+    ("Google Chrome Helper (Renderer)" -> "Google Chrome") and names
+    Python/Node programs after their script or module instead of "python3"."""
+    name = (name or "?").strip()
+    if name.startswith(("kworker", "ksoftirq", "rcu_", "migration/", "kcompact", "kswapd", "jbd2")):
+        return "KERNEL"
+    # Linux cuts process names at 15 characters; the full program path has the whole name
+    full = os.path.basename(exe or (cmdline[0] if cmdline else "") or "")
+    if len(name) == 15 and full.startswith(name):
+        name = full
+    if name.lower().startswith(INTERPRETERS) and cmdline:
+        args = cmdline[1:]
+        if "-c" in args:
+            return name
+        if "-m" in args and args.index("-m") + 1 < len(args):
+            return args[args.index("-m") + 1].split(".")[0]
+        for a in args:
+            if not a.startswith("-"):
+                return os.path.basename(a).removesuffix(".py").split(":")[0]
+    return re.sub(r" Helper.*$|: .*$", "", name)
+
+
+def top(totals, n=TOP_N):
+    return [{"name": k, "value": v} for k, v in sorted(totals.items(), key=lambda kv: -kv[1])[:n] if v > 0]
+
+
+def process_top():
+    """CPU (% of the whole machine) and memory (bytes), grouped by app."""
+    ncpu = psutil.cpu_count() or 1
+    cpu, mem = defaultdict(float), defaultdict(int)
+    for p in psutil.process_iter(["name", "cmdline", "exe", "memory_info"]):
+        try:
+            label = app_label(p.info["name"], p.info["cmdline"], p.info["exe"])
+            cpu[label] += p.cpu_percent(None) / ncpu   # psutil keeps each process between calls
+            if p.info["memory_info"]:
+                mem[label] += p.info["memory_info"].rss
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return {"cpu": top(cpu), "mem": top(mem)}
+
+
+class NetHogs:
+    """Runs `nethogs` in the background and keeps the latest per-app bandwidth.
+    Needs the container's host network + host PID view + NET_ADMIN/NET_RAW/SYS_PTRACE
+    (see docker-compose.yml). Without nethogs it simply reports nothing."""
+
+    def __init__(self):
+        self.latest = None
+        self.task = None
+
+    def start(self, iface):
+        if self.task is None and shutil.which("nethogs"):
+            self.task = asyncio.create_task(self._run(iface))
+
+    @staticmethod
+    def _label(ident):
+        path, pid, _uid = (ident.rsplit("/", 2) + ["", ""])[:3]
+        m = re.match(r"[\d.]+:\d+-([\d.]+):(\d+)$", path)
+        if m:   # traffic the kernel handles itself, e.g. the NFS mount of the NAS
+            if m.group(2) != "2049":
+                return "KERNEL"
+            nas = env("NAS_NAME", "NAS") if m.group(1) == env("NAS_HOST") else m.group(1)
+            return "NFS · " + nas
+        if path.startswith("unknown"):
+            return "OTHER"
+        name, cmd, exe = os.path.basename(path), None, path
+        try:
+            proc = psutil.Process(int(pid))
+            name, cmd = proc.name(), proc.cmdline()
+        except Exception:
+            pass
+        return app_label(name, cmd, exe)
+
+    async def _run(self, iface):
+        while True:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "nethogs", "-t", "-d", "3", iface,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                block = defaultdict(lambda: [0.0, 0.0])
+                async for raw in proc.stdout:
+                    line = raw.decode(errors="replace").rstrip("\n")
+                    if line.startswith("Refreshing:"):
+                        rows = sorted(block.items(), key=lambda kv: -(kv[1][0] + kv[1][1]))
+                        # nethogs reports KB/s; the page wants bytes/s
+                        self.latest = [{"name": k, "rx": rx * 1024, "tx": tx * 1024}
+                                       for k, (tx, rx) in rows[:TOP_N] if rx + tx >= 0.5]
+                        block = defaultdict(lambda: [0.0, 0.0])
+                        continue
+                    parts = line.split("\t")
+                    if len(parts) == 3:
+                        try:
+                            sent, recv = float(parts[1]), float(parts[2])
+                        except ValueError:
+                            continue
+                        b = block[self._label(parts[0])]
+                        b[0] += sent
+                        b[1] += recv
+                await proc.wait()
+            except Exception:
+                pass
+            await asyncio.sleep(10)   # nethogs stopped: try again shortly
+
+
 class ServerStats(Collector):
     name = "server"
     interval = 2
@@ -98,6 +213,9 @@ class ServerStats(Collector):
         # In Docker the host's disk is mounted read-only at /host
         self.disk_path = env("SERVER_DISK_PATH", "/host" if os.path.isdir("/host/etc") else "/")
         self.rates = RateTracker()
+        self.nethogs = NetHogs()
+        self.top = {}
+        self.top_at = 0
         psutil.cpu_percent(None)  # first call primes the counter
 
     def _pick_nic(self, counters):
@@ -113,7 +231,12 @@ class ServerStats(Collector):
         nic = self._pick_nic(counters)
         net = self.rates.update(counters[nic].bytes_recv, counters[nic].bytes_sent)
         net["iface"] = nic
+        self.nethogs.start(nic)
+        if time.time() - self.top_at > 4:
+            self.top = process_top()
+            self.top_at = time.time()
         return {
+            "top": {**self.top, "net": self.nethogs.latest, "net_kind": "apps"},
             "label": env("SERVER_NAME", "SERVERMCSERVEFACE"),
             "cpu_percent": psutil.cpu_percent(None),
             "ram": {"used": vm.total - vm.available, "total": vm.total},
@@ -152,9 +275,54 @@ class NasSnmp(Collector):
         self.iface_name = env("NAS_IFACE", "bond0")
         self.if_index = None
         self.rates = RateTracker()
+        self.top = {}
+        self.top_at = 0
+        self.cpu_prev = None   # (time, {pid: cpu centiseconds})
+        self.ncpu = None
 
     def configured(self):
         return bool(self.host and self.community)
+
+    async def _walk(self, oid):
+        """{last OID number: value} for an SNMP table column."""
+        out = await self._run("snmpbulkwalk", "-v2c", "-c", self.community, "-On", "-Oq", "-t", "5",
+                              self.host, oid)
+        rows = {}
+        for line in out.splitlines():
+            key, _, val = line.partition(" ")
+            if key.startswith("."):
+                rows[key.rsplit(".", 1)[-1]] = val.strip().strip('"')
+        return rows
+
+    async def _top(self):
+        """Top processes from the NAS's process table, plus connections per service.
+        Synology doesn't track bandwidth per app, so "network" here means who is connected."""
+        if self.ncpu is None:
+            self.ncpu = max(1, len(await self._walk("1.3.6.1.2.1.25.3.3.1.2")))
+        names = await self._walk("1.3.6.1.2.1.25.4.2.1.2")
+        paths = await self._walk("1.3.6.1.2.1.25.4.2.1.4")
+        names = {pid: app_label(n, exe=paths.get(pid)) for pid, n in names.items()}
+        cpu_t = {k: int(v.split()[0]) for k, v in (await self._walk("1.3.6.1.2.1.25.5.1.1.1")).items()}
+        mem_kb = await self._walk("1.3.6.1.2.1.25.5.1.1.2")
+        now = time.time()
+        cpu, mem = defaultdict(float), defaultdict(int)
+        if self.cpu_prev:
+            dt = now - self.cpu_prev[0]
+            for pid, t in cpu_t.items():
+                before = self.cpu_prev[1].get(pid)
+                if before is not None and t >= before and pid in names:
+                    # centiseconds of CPU time -> % of the whole machine
+                    cpu[app_label(names[pid])] += (t - before) / (dt * 100) / self.ncpu * 100
+        self.cpu_prev = (now, cpu_t)
+        for pid, v in mem_kb.items():
+            if pid in names:
+                mem[app_label(names[pid])] += int(v.split()[0]) * 1024
+        svc_names = await self._walk("1.3.6.1.4.1.6574.6.1.1.2")
+        svc_users = await self._walk("1.3.6.1.4.1.6574.6.1.1.3")
+        services = sorted(({"name": svc_names[k], "value": int(v)} for k, v in svc_users.items()
+                           if k in svc_names and v.isdigit() and int(v) > 0), key=lambda x: -x["value"])
+        return {"cpu": top(cpu) if self.cpu_prev and cpu else self.top.get("cpu", []),
+                "mem": top(mem), "net": services, "net_kind": "services"}
 
     async def _run(self, *args):
         proc = await asyncio.create_subprocess_exec(
@@ -191,7 +359,14 @@ class NasSnmp(Collector):
         mem_used = (n["mem_total"] - n["mem_avail"] - n["mem_buffer"] - n["mem_cached"]) * 1024
         net = self.rates.update(n["rx"], n["tx"])
         net["iface"] = self.iface_name
+        if time.time() - self.top_at > 15:
+            try:
+                self.top = await self._top()
+            except Exception:
+                pass   # keep the last list; the main stats still matter more
+            self.top_at = time.time()
         return {
+            "top": self.top,
             "label": env("NAS_NAME", "SMARTNAS"),
             "cpu_percent": 100 - n["cpu_idle"],
             "ram": {"used": max(0, mem_used), "total": mem_total},

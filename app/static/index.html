@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="lcars.css?v=23">
+  <link rel="stylesheet" href="lcars.css?v=26">
 </head>
 <body>
 <div class="lcars">
@@ -132,6 +132,7 @@
 
 <template id="sys-template">
   <h2 class="panel-head"><span class="ph-name sys-name">—</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
+  <div class="sys-overview">
   <div class="meters">
     <div class="meter-row"><span class="label">CPU</span><div class="segs s-cpu"></div><span class="mval v-cpu">—</span></div>
     <div class="meter-row"><span class="label">MEM</span><div class="segs s-ram"></div><span class="mval v-ram">—</span></div>
@@ -142,8 +143,11 @@
     <div class="rate tx"><span>↑</span><b class="v-tx">—</b></div>
   </div>
   <svg class="spark spark-net" viewBox="0 0 300 60" preserveAspectRatio="none"></svg>
+  </div>
+  <!-- Tap the panel: CPU → MEMORY → NETWORK → back. Top apps for each. -->
+  <ol class="tops" hidden></ol>
 </template>
 
-<script src="app.js?v=23"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>

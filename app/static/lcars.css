@@ -228,6 +228,18 @@ span > .key:not(:first-child) { margin-left: 10px; }
 .rate.rx { background: var(--orange); border-radius: 999px 0 0 999px; }
 .rate.tx { background: var(--blue); border-radius: 0 999px 999px 0; }
 .spark-net { height: 36px; margin-top: 4px; }
+.sys { cursor: pointer; }
+/* top-apps view (tap a system panel) */
+.tops { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tops li { display: grid; grid-template-columns: minmax(0, 1.1fr) 1fr 96px; gap: 8px; align-items: center; }
+.tops li.empty { display: block; color: #77779a; font-size: 16px; padding: 4px 0; }
+.tops .t-name { color: var(--peach); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tops li:first-child .t-name { color: #fff; }
+.tops .segs { height: 14px; }
+.tops[hidden] { display: none; }
+/* The list sits on top of the (invisible) overview, so the panel never changes size */
+.sys .tops { position: absolute; top: 34px; left: var(--inset); right: 0; }
+.sys-overview[hidden] { display: block; visibility: hidden; }
 
 
 /* plex */

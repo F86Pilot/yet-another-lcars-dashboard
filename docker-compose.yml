@@ -6,6 +6,15 @@ services:
     # Share the server's network directly, so the dashboard sees the real eno1
     # traffic for the network graph. It listens on PORT from .env (8088).
     network_mode: host
+    # See the server's own programs (not just this container's), for the
+    # "what's using CPU / memory / network" views on the server panel
+    pid: host
+    # nethogs needs to watch network traffic and match it to programs.
+    # It only counts bytes per program; nothing is recorded or stored.
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_PTRACE
     # Tokens and addresses live in .env (kept private, not baked into the image)
     env_file: .env
     volumes:

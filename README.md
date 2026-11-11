@@ -123,3 +123,7 @@ The Mac helper is also open to anyone on your network. Keep both on your home ne
 ## Not affiliated
 
 This is a fan project. *Star Trek* and LCARS belong to their owners, and the original LCARS design is the work of Michael Okuda. Everything here is original and only inspired by that style.
+
+## License
+
+[MIT](LICENSE). Copy it, change it, use it however you like.

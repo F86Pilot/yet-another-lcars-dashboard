@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="lcars.css?v=37">
+  <link rel="stylesheet" href="lcars.css?v=41">
 </head>
 <body>
 <div class="lcars">
@@ -41,12 +41,12 @@
   <section class="sec sec-main">
     <div class="side">
       <div class="elbow elbow-top c-purple"></div>
-      <nav class="buttons">
-        <a href="#p-server" class="block c-blue"><span>01-SYSTEMS</span></a>
-        <a href="#p-plex" class="block c-orange"><span>02-PLEX</span></a>
-        <a href="#p-mesh" class="block c-tan"><span>03-MESH</span></a>
-        <a href="#p-weather" class="block c-lavender"><span>04-CLIMATE</span></a>
-      </nav>
+      <div class="buttons">
+        <div class="block c-blue"><span>01-SYSTEMS</span></div>
+        <div class="block c-orange"><span>02-PLEX</span></div>
+        <div class="block c-tan"><span>03-MESH</span></div>
+        <div class="block c-lavender"><span>04-CLIMATE</span></div>
+      </div>
       <div class="block c-purple grow"></div>
     </div>
 
@@ -61,12 +61,12 @@
       <main class="panels">
 
         <!-- Systems: filled in by app.js from the template below -->
-        <section class="panel span-4 sys" id="p-server" data-key="server" style="--c:var(--blue)"></section>
-        <section class="panel span-4 sys" id="p-nas" data-key="nas" style="--c:var(--lavender)"></section>
-        <section class="panel span-4 sys" id="p-mac" data-key="mac" style="--c:var(--peach)"></section>
+        <section class="panel span-4 sys" id="p-server" data-key="server" data-detail="server" style="--c:var(--blue)"></section>
+        <section class="panel span-4 sys" id="p-nas" data-key="nas" data-detail="nas" style="--c:var(--lavender)"></section>
+        <section class="panel span-4 sys" id="p-mac" data-key="mac" data-detail="mac" style="--c:var(--peach)"></section>
 
         <!-- Plex -->
-        <section class="panel span-6" id="p-plex" style="--c:var(--orange)">
+        <section class="panel span-6" id="p-plex" data-detail="plex" style="--c:var(--orange)">
           <h2 class="panel-head"><span class="ph-name">PLEX</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
           <div id="plex-streams" class="streams"></div>
           <div class="sub-bar"><span>RECENTLY WATCHED</span><i></i></div>
@@ -74,13 +74,13 @@
         </section>
 
         <!-- MeshCore -->
-        <section class="panel span-6" id="p-mesh" style="--c:var(--tan)">
+        <section class="panel span-6" id="p-mesh" data-detail="mesh" style="--c:var(--tan)">
           <h2 class="panel-head"><span class="ph-name">MESHCORE</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
           <ol id="mesh-log" class="mesh"></ol>
         </section>
 
         <!-- Solar repeater: shares the MeshCore spot; tap either panel to switch -->
-        <section class="panel span-6 swap-hidden" id="p-repeater" style="--c:var(--tan)">
+        <section class="panel span-6 swap-hidden" id="p-repeater" data-detail="repeater" style="--c:var(--tan)">
           <h2 class="panel-head"><span class="ph-name" id="rp-name">SOLAR REPEATER</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
           <div class="clim rp-top">
             <div class="cell"><div class="label">BATTERY</div><div class="bignum c-orange" id="rp-now">—</div></div>
@@ -102,7 +102,7 @@
         </section>
 
         <!-- Outside: weather + air quality (Open-Meteo) -->
-        <section class="panel span-6" id="p-weather" style="--c:var(--lavender)">
+        <section class="panel span-6" id="p-weather" data-detail="weather" style="--c:var(--lavender)">
           <h2 class="panel-head"><span class="ph-name" id="wx-name">OUTSIDE</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
           <div class="clim">
             <div class="cell"><div class="label">NOW</div><div class="bignum c-orange" id="wx-temp">—</div></div>
@@ -117,7 +117,7 @@
         </section>
 
         <!-- Hot tub: shares the Outside spot; tap either panel to switch -->
-        <section class="panel span-6 swap-hidden" id="p-hottub" style="--c:var(--blue)">
+        <section class="panel span-6 swap-hidden" id="p-hottub" data-detail="hottub" style="--c:var(--blue)">
           <h2 class="panel-head"><span class="ph-name" id="ht-name">HOT TUB</span><span class="ph-fill"></span><span class="ind" id="ht-power">POWER</span><span class="ind" id="ht-heat">HEATER</span><span class="ind" id="ht-filter">FILTER</span><span class="ptag"></span><span class="ph-cap" id="ht-cap"></span></h2>
           <div class="clim ht-body">
             <div class="cell"><div class="label">WATER</div><div class="bignum c-peach" id="ht-temp">—</div></div>
@@ -133,7 +133,7 @@
         </section>
 
         <!-- Inside: thermostat sensors, via Home Assistant -->
-        <section class="panel span-6" id="p-indoor" style="--c:var(--purple)">
+        <section class="panel span-6" id="p-indoor" data-detail="indoor" style="--c:var(--purple)">
           <h2 class="panel-head"><span class="ph-name">INDOOR CLIMATE</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
           <div class="clim">
             <div class="clim-cells" id="indoor-rooms"></div>
@@ -142,6 +142,198 @@
         </section>
 
       </main>
+
+      <!-- Full-screen detail views: tap a panel's title to open one. BACK (or 60 s untouched) closes it. -->
+      <div class="details" id="details" hidden>
+
+        <section class="panel detail" id="d-hottub" style="--c:var(--blue)">
+          <h2 class="panel-head"><span class="ph-name" id="dh-name">HOT TUB</span><span class="ph-fill"></span><span class="ind" id="dh-power">POWER</span><span class="ind" id="dh-heat">HEATER</span><span class="ind" id="dh-filter">FILTER</span><span class="ptag"></span><button class="ph-cap back">BACK</button></h2>
+          <div class="dh-top">
+            <div class="cell"><div class="label">WATER</div><div class="bignum c-peach" id="dh-temp">—</div></div>
+            <div class="cell"><div class="label">TARGET</div><div class="bignum c-tan" id="dh-target">—</div></div>
+            <div class="side-info">
+              <div class="headline" id="dh-status">—</div>
+              <div class="line" id="dh-eta"></div>
+              <div class="line" id="dh-rates"></div>
+              <div class="line" id="dh-extra"></div>
+            </div>
+            <div class="ranges" data-key="hottub" id="dh-ranges">
+              <button data-hours="24">24 HRS</button><button data-hours="72">3 DAYS</button><button data-hours="168">7 DAYS</button>
+            </div>
+          </div>
+          <div class="sub-bar"><span id="dh-chart-title">WATER · 24 HRS</span><i></i></div>
+          <div class="ht-legend dh-legend"><span class="k-water">━ WATER</span><span class="k-target">┅ TARGET</span><span class="k-heat">▮ HEATING</span><span class="k-filter">▬ FILTER</span><span id="dh-range-stats"></span></div>
+          <div class="dh-chart">
+            <div class="rp-axis" id="dh-axis"></div>
+            <svg id="dh-svg" class="ht-svg dh-svg" viewBox="0 0 600 200" preserveAspectRatio="none" aria-label="Water temperature, target and heater"></svg>
+          </div>
+          <div class="rp-days dh-ticks" id="dh-ticks"></div>
+          <div class="sub-bar"><span>HEATER · HOURS PER DAY</span><i></i></div>
+          <div class="dh-days" id="dh-days"></div>
+        </section>
+
+        <!-- Server / NAS / Mac share one view; app.js fills in whichever was tapped -->
+        <section class="panel detail" id="d-sys">
+          <h2 class="panel-head"><span class="ph-name" id="ds-name">SYSTEM</span><span class="ph-fill"></span><span class="ptag"></span><button class="ph-cap back">BACK</button></h2>
+          <div class="dv-cols ds-cols">
+            <div class="dv-col">
+              <div class="dh-top">
+                <div class="cell"><div class="label">CPU</div><div class="bignum c-orange" id="ds-cpu">—</div></div>
+                <div class="cell"><div class="label">MEMORY</div><div class="bignum c-peach" id="ds-mem">—</div></div>
+                <div class="side-info">
+                  <div class="line" id="ds-l1"></div><div class="line" id="ds-l2"></div><div class="line" id="ds-l3"></div><div class="line" id="ds-l4"></div>
+                </div>
+                <div class="ranges" data-key="sys"><button data-hours="1">1 HR</button><button data-hours="24">24 HRS</button><button data-hours="168">7 DAYS</button></div>
+              </div>
+              <div class="sub-bar"><span>CPU %</span><i></i><b class="sb-note" id="ds-cpu-note"></b></div>
+              <div class="dv-chart"><div class="rp-axis" id="ds-cpu-axis"></div><svg class="dv-svg" id="ds-cpu-svg" viewBox="0 0 600 100" preserveAspectRatio="none"></svg></div>
+              <div class="sub-bar"><span>MEMORY %</span><i></i><b class="sb-note" id="ds-mem-note"></b></div>
+              <div class="dv-chart"><div class="rp-axis" id="ds-mem-axis"></div><svg class="dv-svg" id="ds-mem-svg" viewBox="0 0 600 100" preserveAspectRatio="none"></svg></div>
+              <div class="sub-bar"><span>NETWORK · MBPS</span><i></i><b class="sb-note" id="ds-net-note"></b></div>
+              <div class="dv-chart"><div class="rp-axis" id="ds-net-axis"></div><svg class="dv-svg" id="ds-net-svg" viewBox="0 0 600 100" preserveAspectRatio="none"></svg></div>
+              <div class="rp-days dv-ticks" id="ds-ticks"></div>
+            </div>
+            <div class="dv-col dv-side">
+              <div class="sub-bar"><span>TOP · CPU</span><i></i></div><ol class="tops" id="ds-top-cpu"></ol>
+              <div class="sub-bar"><span>TOP · MEMORY</span><i></i></div><ol class="tops" id="ds-top-mem"></ol>
+              <div class="sub-bar"><span id="ds-top-net-title">TOP · NETWORK</span><i></i></div><ol class="tops" id="ds-top-net"></ol>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel detail" id="d-plex" style="--c:var(--orange)">
+          <h2 class="panel-head"><span class="ph-name">PLEX · DETAIL</span><span class="ph-fill"></span><span class="ptag"></span><button class="ph-cap back">BACK</button></h2>
+          <div class="dv-cols dp-cols">
+            <div class="dv-col">
+              <div class="sub-bar"><span>NOW PLAYING</span><i></i><b class="sb-note" id="dp-bw"></b></div>
+              <div class="streams" id="dp-streams"></div>
+              <div class="sub-bar"><span>PLAYS · 30 DAYS</span><i></i><b class="sb-note" id="dp-plays-note"></b></div>
+              <div class="dv-chart"><div class="rp-axis" id="dp-axis"></div><svg class="dv-svg" id="dp-svg" viewBox="0 0 600 100" preserveAspectRatio="none"></svg></div>
+              <div class="rp-days dv-ticks" id="dp-ticks"></div>
+              <div class="dv-keys"><span class="k-tv">▮ TV</span><span class="k-movie">▮ MOVIES</span></div>
+            </div>
+            <div class="dv-col">
+              <div class="sub-bar"><span>TOP SHOWS · 7 DAYS</span><i></i></div><ol class="tops ranked" id="dp-top-tv"></ol>
+              <div class="sub-bar"><span>TOP MOVIES · 7 DAYS</span><i></i></div><ol class="tops ranked" id="dp-top-movies"></ol>
+              <div class="sub-bar"><span>VIEWERS · 7 DAYS</span><i></i></div><ol class="tops ranked" id="dp-top-users"></ol>
+              <div class="sub-bar"><span>LIBRARY</span><i></i></div><div class="dv-facts" id="dp-libs"></div>
+            </div>
+            <div class="dv-col">
+              <div class="sub-bar"><span>HISTORY</span><i></i></div>
+              <ol class="history dv-scroll" id="dp-history"></ol>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel detail" id="d-mesh" style="--c:var(--tan)">
+          <h2 class="panel-head"><span class="ph-name">MESHCORE · DETAIL</span><span class="ph-fill"></span><span class="ptag"></span><button class="ph-cap back">BACK</button></h2>
+          <div class="dv-cols dm-cols">
+            <div class="dv-col">
+              <div class="sub-bar"><span>MESSAGES · 24 HRS</span><i></i><b class="sb-note" id="dm-count"></b></div>
+              <ol class="mesh dv-scroll dm-log" id="dm-log"></ol>
+            </div>
+            <div class="dv-col">
+              <div class="sub-bar"><span>MESSAGES / HOUR</span><i></i></div>
+              <div class="dv-chart dm-chart"><div class="rp-axis" id="dm-axis"></div><svg class="dv-svg" id="dm-svg" viewBox="0 0 600 100" preserveAspectRatio="none"></svg></div>
+              <div class="rp-days dv-ticks" id="dm-ticks"></div>
+              <div class="dv-keys" id="dm-keys"></div>
+              <div class="dv-cols dm-sub">
+                <div class="dv-col">
+                  <div class="sub-bar"><span>CHANNELS</span><i></i></div><ol class="tops ranked" id="dm-channels"></ol>
+                  <div class="sub-bar"><span>TOP SENDERS</span><i></i></div><ol class="tops ranked" id="dm-senders"></ol>
+                </div>
+                <div class="dv-col">
+                  <div class="sub-bar"><span>LOCAL RADIO</span><i></i></div><div class="dv-facts" id="dm-radio"></div>
+                  <div class="sub-bar"><span>HEARD · 7 DAYS</span><i></i><b class="sb-note" id="dm-heard-n"></b></div>
+                  <ol class="dm-heard dv-scroll" id="dm-heard"></ol>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel detail" id="d-repeater" style="--c:var(--tan)">
+          <h2 class="panel-head"><span class="ph-name" id="dr-name">SOLAR REPEATER · DETAIL</span><span class="ph-fill"></span><span class="ptag"></span><button class="ph-cap back">BACK</button></h2>
+          <div class="dh-top">
+            <div class="cell"><div class="label">BATTERY</div><div class="bignum c-orange" id="dr-now">—</div></div>
+            <div class="cell"><div class="label">LOW / PEAK TODAY</div><div class="bignum c-peach dr-range" id="dr-today">—</div></div>
+            <div class="side-info">
+              <div class="line" id="dr-l1"></div><div class="line" id="dr-l2"></div><div class="line" id="dr-l3"></div><div class="line" id="dr-l4"></div>
+            </div>
+            <div class="ranges" data-key="repeater"><button data-hours="96">4 DAYS</button><button data-hours="336">14 DAYS</button></div>
+          </div>
+          <div class="sub-bar"><span>BATTERY VOLTS</span><i></i><b class="sb-note" id="dr-volts-note"></b></div>
+          <div class="dv-chart dr-main"><div class="rp-axis" id="dr-axis"></div><svg class="dv-svg" id="dr-svg" viewBox="0 0 600 200" preserveAspectRatio="none"></svg></div>
+          <div class="rp-days dv-ticks" id="dr-ticks"></div>
+          <div class="dv-cols dr-cols">
+            <div class="dv-col">
+              <div class="sub-bar"><span>RELAYED / HOUR</span><i></i></div>
+              <div class="dv-chart"><div class="rp-axis" id="dr-pk-axis"></div><svg class="dv-svg" id="dr-pk-svg" viewBox="0 0 600 100" preserveAspectRatio="none"></svg></div>
+            </div>
+            <div class="dv-col">
+              <div class="sub-bar"><span>RADIO · NOISE FLOOR / LAST SNR</span><i></i></div>
+              <div class="dv-chart"><div class="rp-axis" id="dr-sig-axis"></div><svg class="dv-svg" id="dr-sig-svg" viewBox="0 0 600 100" preserveAspectRatio="none"></svg></div>
+            </div>
+          </div>
+          <div class="sub-bar"><span>DAILY · LOW TO PEAK VOLTS</span><i></i></div>
+          <div class="dh-days dr-days" id="dr-days"></div>
+        </section>
+
+        <section class="panel detail" id="d-weather" style="--c:var(--lavender)">
+          <h2 class="panel-head"><span class="ph-name" id="dw-name">OUTSIDE · DETAIL</span><span class="ph-fill"></span><span class="ptag"></span><button class="ph-cap back">BACK</button></h2>
+          <div class="dh-top">
+            <div class="cell"><div class="label">NOW</div><div class="bignum c-orange" id="dw-temp">—</div></div>
+            <div class="cell"><div class="label">AIR QUALITY</div><div class="bignum aqi" id="dw-aqi">—</div></div>
+            <div class="side-info">
+              <div class="headline" id="dw-sky">—</div>
+              <div class="line" id="dw-l1"></div><div class="line" id="dw-l2"></div><div class="line" id="dw-l3"></div>
+            </div>
+            <div class="ranges" data-key="weather"><button data-hours="48">48 HRS</button><button data-hours="168">7 DAYS</button></div>
+          </div>
+          <div class="sub-bar"><span id="dw-chart-title">TEMPERATURE</span><i></i></div>
+          <div class="ht-legend dh-legend"><span class="k-water">━ TEMP</span><span class="k-target">┅ FEELS LIKE</span><span class="k-rain">▮ CHANCE OF RAIN</span><span class="k-now">│ NOW</span></div>
+          <div class="dv-chart dw-main"><div class="rp-axis" id="dw-axis"></div><svg class="dv-svg" id="dw-svg" viewBox="0 0 600 200" preserveAspectRatio="none"></svg></div>
+          <div class="rp-days dv-ticks" id="dw-ticks"></div>
+          <div class="dv-cols dw-cols">
+            <div class="dv-col">
+              <div class="sub-bar"><span>FORECAST</span><i></i></div>
+              <div class="dw-days" id="dw-days"></div>
+            </div>
+            <div class="dv-col">
+              <div class="sub-bar"><span>AIR QUALITY · AQI</span><i></i><b class="sb-note" id="dw-aqi-note"></b></div>
+              <div class="dv-chart"><div class="rp-axis" id="dw-aqi-axis"></div><svg class="dv-svg" id="dw-aqi-svg" viewBox="0 0 600 100" preserveAspectRatio="none"></svg></div>
+              <div class="rp-days dv-ticks" id="dw-aqi-ticks"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel detail" id="d-indoor" style="--c:var(--purple)">
+          <h2 class="panel-head"><span class="ph-name">INDOOR CLIMATE · DETAIL</span><span class="ph-fill"></span><span class="ptag"></span><button class="ph-cap back">BACK</button></h2>
+          <div class="dh-top">
+            <div class="clim-cells" id="di-rooms"></div>
+            <div class="side-info">
+              <div class="headline" id="di-action">—</div>
+              <div class="line" id="di-l1"></div><div class="line" id="di-l2"></div><div class="line" id="di-l3"></div>
+            </div>
+            <div class="ranges" data-key="indoor"><button data-hours="24">24 HRS</button><button data-hours="72">3 DAYS</button><button data-hours="168">7 DAYS</button></div>
+          </div>
+          <div class="sub-bar"><span id="di-chart-title">TEMPERATURE</span><i></i><b class="sb-note" id="di-note"></b></div>
+          <div class="ht-legend dh-legend" id="di-legend"></div>
+          <div class="dv-chart di-main"><div class="rp-axis" id="di-axis"></div><svg class="dv-svg" id="di-svg" viewBox="0 0 600 200" preserveAspectRatio="none"></svg></div>
+          <div class="rp-days dv-ticks" id="di-ticks"></div>
+          <div class="dv-cols di-cols">
+            <div class="dv-col">
+              <div class="sub-bar"><span>HUMIDITY %</span><i></i></div>
+              <div class="dv-chart"><div class="rp-axis" id="di-hum-axis"></div><svg class="dv-svg" id="di-hum-svg" viewBox="0 0 600 100" preserveAspectRatio="none"></svg></div>
+            </div>
+            <div class="dv-col">
+              <div class="sub-bar"><span>HVAC · HOURS PER DAY</span><i></i></div>
+              <div class="dh-days di-days" id="di-days"></div>
+            </div>
+          </div>
+        </section>
+
+      </div>
     </div>
   </section>
 </div>
@@ -164,6 +356,6 @@
   <ol class="tops" hidden></ol>
 </template>
 
-<script src="app.js?v=37"></script>
+<script src="app.js?v=41"></script>
 </body>
 </html>

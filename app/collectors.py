@@ -41,6 +41,120 @@ class Collector:
         raise NotImplementedError
 
 
+def data_path(filename):
+    """Where saved history lives: the /data volume in Docker, else next to the code."""
+    return os.path.join("/data" if os.path.isdir("/data") else ".", filename)
+
+
+class Cached:
+    """Remembers an async result for a while, so a detail view left open doesn't hammer anything."""
+
+    def __init__(self, seconds):
+        self.seconds, self.at, self.value, self.key = seconds, 0, None, None
+
+    async def get(self, fn, key=None):
+        if self.value is None or key != self.key or time.time() - self.at > self.seconds:
+            self.value, self.key, self.at = await fn(), key, time.time()
+        return self.value
+
+
+class HistoryStore:
+    """
+    One-minute averages of the system panels' numbers, kept 8 days in SQLite
+    (data/history.db), for the bigger graphs on their full-screen views.
+    """
+    KEEP_DAYS = 8
+
+    def __init__(self, path=None):
+        self.path = path or env("HISTORY_DB") or data_path("history.db")
+        self._db = None
+        self.pending = {}   # source -> (minute, {field: [values]})
+
+    def db(self):
+        if self._db is None:
+            import sqlite3
+            self._db = sqlite3.connect(self.path)
+            self._db.execute("CREATE TABLE IF NOT EXISTS samples (source TEXT, ts INTEGER, data TEXT, PRIMARY KEY (source, ts))")
+        return self._db
+
+    def add(self, source, values):
+        """Collect a reading; once a minute is complete its average is saved."""
+        import json
+        minute = int(time.time() // 60) * 60
+        current = self.pending.get(source)
+        if current and current[0] != minute:
+            avg = {k: round(sum(v) / len(v), 2) for k, v in current[1].items() if v}
+            self.db().execute("INSERT OR REPLACE INTO samples VALUES (?, ?, ?)", (source, current[0], json.dumps(avg)))
+            if current[0] % 3600 == 0:
+                self.db().execute("DELETE FROM samples WHERE ts < ?", (minute - self.KEEP_DAYS * 86400,))
+            self.db().commit()
+            current = None
+        if current is None:
+            current = self.pending[source] = (minute, defaultdict(list))
+        for k, v in values.items():
+            if v is not None:
+                current[1][k].append(float(v))
+
+    def series(self, source, hours, points=300):
+        """{"t": [...], field: [...]}: averages over buckets, about `points` of them for the span."""
+        import json
+        since = time.time() - hours * 3600
+        bucket = max(60, int(hours * 3600 / points) // 60 * 60)
+        groups = {}
+        for ts, data in self.db().execute("SELECT ts, data FROM samples WHERE source = ? AND ts >= ? ORDER BY ts",
+                                          (source, since)):
+            g = groups.setdefault(ts // bucket * bucket, defaultdict(list))
+            for k, v in json.loads(data).items():
+                g[k].append(v)
+        out = {"t": sorted(groups), "bucket": bucket}
+        fields = sorted({k for g in groups.values() for k in g})
+        for f in fields:
+            out[f] = [round(sum(groups[t][f]) / len(groups[t][f]), 2) if groups[t].get(f) else None for t in out["t"]]
+        return out
+
+
+HISTORY = HistoryStore()
+
+
+class SystemHistory:
+    """Mixed into the server / NAS / Mac collectors: what to save each reading, and the detail view's data."""
+
+    @staticmethod
+    def sample(d):
+        return {"cpu": d["cpu_percent"], "mem": 100 * d["ram"]["used"] / d["ram"]["total"] if d["ram"]["total"] else None,
+                "disk": d["disk"]["used"], "rx": d["net"]["rx_bps"], "tx": d["net"]["tx_bps"], "temp": d.get("temp_c")}
+
+    async def detail(self, hours=24):
+        hours = min(max(float(hours), 1), 24 * 7)
+        week = HISTORY.series(self.name, 24 * 7, points=7 * 24)  # hourly, for the disk fill rate
+        return {"hours": hours, "series": HISTORY.series(self.name, hours),
+                "disk_week": {"t": week["t"], "disk": week.get("disk", [])}}
+
+
+async def ha_history(client, url, token, entity_ids, hours):
+    """Home Assistant's recorded states for some entities: {entity_id: [state, ...]}.
+    end_time matters: without it HA only returns the first day after the start."""
+    now = datetime.now(timezone.utc)
+    start = datetime.fromtimestamp(now.timestamp() - hours * 3600, timezone.utc)
+    r = await client.get(url.rstrip("/") + "/api/history/period/" + start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                         params={"filter_entity_id": ",".join(entity_ids), "significant_changes_only": "0",
+                                 "end_time": now.strftime("%Y-%m-%dT%H:%M:%SZ")},
+                         headers={"Authorization": "Bearer " + token}, timeout=30)
+    r.raise_for_status()
+    return {rows[0]["entity_id"]: rows for rows in r.json() if rows}
+
+
+def ha_ts(state):
+    return round(datetime.fromisoformat(state["last_updated"].replace("Z", "+00:00")).timestamp())
+
+
+def ha_number(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 # ------------------------------------------------------------------
 # Shared helpers for "system" panels (server, NAS, Mac all look alike)
 # ------------------------------------------------------------------
@@ -204,7 +318,7 @@ class NetHogs:
             await asyncio.sleep(10)   # nethogs stopped: try again shortly
 
 
-class ServerStats(Collector):
+class ServerStats(SystemHistory, Collector):
     name = "server"
     interval = 2
 
@@ -251,7 +365,7 @@ class ServerStats(Collector):
 # Synology NAS over SNMP (read-only, no DSM password needed)
 # ------------------------------------------------------------------
 
-class NasSnmp(Collector):
+class NasSnmp(SystemHistory, Collector):
     name = "nas"
     interval = 5
 
@@ -382,7 +496,7 @@ class NasSnmp(Collector):
 # Mac Mini (asks the little helper running on the Mac)
 # ------------------------------------------------------------------
 
-class MacStats(Collector):
+class MacStats(SystemHistory, Collector):
     name = "mac"
     interval = 5
 
@@ -462,7 +576,50 @@ class Plex(Collector):
                 "detail": "S{:0>2}E{:0>2} · {}".format(h.get("parent_media_index"), h.get("media_index"), h.get("title"))
                           if h.get("media_type") == "episode" else str(h.get("year") or "MOVIE"),
             })
-        return {"streams": streams, "history": plays}
+        return {"streams": streams, "history": plays,
+                "bandwidth_kbps": int(activity.get("total_bandwidth") or 0)}
+
+    @staticmethod
+    def _play(h):
+        return {
+            "time": iso(h["date"]) if h.get("date") else None,
+            "user": h.get("friendly_name"),
+            "player": h.get("player") or h.get("platform"),
+            "percent": h.get("percent_complete"),
+            "show": h.get("grandparent_title") or h.get("title"),
+            "kind": h.get("media_type"),
+            "minutes": round((h.get("play_duration") or h.get("duration") or 0) / 60),
+            "detail": "S{:0>2}E{:0>2} · {}".format(h.get("parent_media_index"), h.get("media_index"), h.get("title"))
+                      if h.get("media_type") == "episode" else str(h.get("year") or "MOVIE"),
+        }
+
+    async def _detail(self):
+        by_date, stats, libraries, history = await asyncio.gather(
+            self._cmd("get_plays_by_date", time_range=30),
+            self._cmd("get_home_stats", time_range=7, stats_count=6),
+            self._cmd("get_libraries"),
+            self._cmd("get_history", length=60))
+        series = {s["name"]: s["data"] for s in by_date.get("series", [])}
+        rows = lambda stat_id: next((s["rows"] for s in stats if s["stat_id"] == stat_id), [])
+        return {
+            "days": by_date.get("categories", []),
+            "tv": series.get("TV", []), "movies": series.get("Movies", []),
+            "top_tv": [{"title": r.get("title"), "plays": r.get("total_plays"), "minutes": round((r.get("total_duration") or 0) / 60)}
+                       for r in rows("top_tv")],
+            "top_movies": [{"title": r.get("title"), "plays": r.get("total_plays"), "minutes": round((r.get("total_duration") or 0) / 60)}
+                           for r in rows("top_movies")],
+            "top_users": [{"name": r.get("friendly_name"), "plays": r.get("total_plays"), "minutes": round((r.get("total_duration") or 0) / 60)}
+                          for r in rows("top_users")],
+            "libraries": [{"name": l.get("section_name"), "type": l.get("section_type"), "count": int(l.get("count") or 0),
+                           "seasons": int(l.get("parent_count") or 0), "episodes": int(l.get("child_count") or 0)}
+                          for l in libraries],
+            "history": [self._play(h) for h in history.get("data", [])],
+        }
+
+    async def detail(self, hours=None):
+        if not hasattr(self, "cache"):
+            self.cache = Cached(120)
+        return await self.cache.get(self._detail)
 
 
 # ------------------------------------------------------------------
@@ -499,28 +656,67 @@ class MeshCore(Collector):
         messages = []
         # Ask for extra, since messages from hidden channels get dropped below
         for m in await self._get("/api/messages", limit=60):
-            where = self.channels.get(m.get("conversation_key"), "#?") if m.get("type") == "CHAN" else "DIRECT"
-            if where != "DIRECT" and any(word in where.lower() for word in self.hide_words):
+            msg = self._message(m)
+            if msg is None:
                 continue
             if len(messages) >= 12:
                 break
-            sender = "YOU" if m.get("outgoing") else (m.get("sender_name") or "UNKNOWN")
-            text = m.get("text") or ""
-            # Channel messages arrive as "Sender: text"; strip the repeated name
-            if m.get("sender_name") and text.startswith(m["sender_name"] + ": "):
-                text = text[len(m["sender_name"]) + 2:]
-            paths = m.get("paths") or []
-            best = max(paths, key=lambda p: p.get("rssi") or -999) if paths else {}
-            messages.append({
-                "time": iso(m.get("received_at") or m.get("sender_timestamp") or time.time()),
-                "where": where,
-                "sender": sender,
-                "text": text,
-                "rssi": best.get("rssi"),
-                "snr": best.get("snr"),
-                "hops": best.get("path_len"),
-            })
+            messages.append(msg)
         return {"messages": messages}
+
+    def _message(self, m):
+        """One message as the page shows it, or None if it's in a hidden channel."""
+        where = self.channels.get(m.get("conversation_key"), "#?") if m.get("type") == "CHAN" else "DIRECT"
+        if where != "DIRECT" and any(word in where.lower() for word in self.hide_words):
+            return None
+        sender = "YOU" if m.get("outgoing") else (m.get("sender_name") or "UNKNOWN")
+        text = m.get("text") or ""
+        # Channel messages arrive as "Sender: text"; strip the repeated name
+        if m.get("sender_name") and text.startswith(m["sender_name"] + ": "):
+            text = text[len(m["sender_name"]) + 2:]
+        paths = m.get("paths") or []
+        best = max(paths, key=lambda p: p.get("rssi") or -999) if paths else {}
+        return {
+            "time": iso(m.get("received_at") or m.get("sender_timestamp") or time.time()),
+            "ts": m.get("received_at") or m.get("sender_timestamp"),
+            "where": where,
+            "sender": sender,
+            "text": text,
+            "rssi": best.get("rssi"),
+            "snr": best.get("snr"),
+            "hops": best.get("path_len"),
+        }
+
+    async def _detail(self):
+        contacts, health = await asyncio.gather(self._get("/api/contacts", limit=1000), self._get("/api/health"))
+        since = time.time() - 86400
+        # RemoteTerm hands out at most 1000 messages at a time; page back until a full day is covered
+        raw = []
+        for page in range(5):
+            batch = await self._get("/api/messages", limit=1000, offset=page * 1000)
+            raw += batch
+            if len(batch) < 1000 or (batch[-1].get("received_at") or 0) < since:
+                break
+        msgs = [x for x in (self._message(m) for m in raw) if x and (x["ts"] or 0) >= since]
+        kinds = {1: "CHAT", 2: "REPEATER", 3: "ROOM", 4: "SENSOR"}
+        heard = sorted((c for c in contacts if (c.get("last_seen") or 0) >= time.time() - 7 * 86400),
+                       key=lambda c: -(c.get("last_seen") or 0))
+        stats = health.get("radio_stats") or {}
+        return {
+            "messages": msgs,   # the last 24 hours, newest first
+            "contacts": [{"name": c.get("name"), "kind": kinds.get(c.get("type"), "?"), "last_seen": c.get("last_seen")}
+                         for c in heard[:40]],
+            "contact_count": len(contacts),
+            "radio": {"connected": health.get("radio_connected"), "model": (health.get("radio_device_info") or {}).get("model"),
+                      "noise_floor": stats.get("noise_floor"), "last_rssi": stats.get("last_rssi"), "last_snr": stats.get("last_snr"),
+                      "packets_recv": stats.get("packets_recv"), "packets_sent": stats.get("packets_sent"),
+                      "uptime": stats.get("uptime_secs"), "battery_mv": stats.get("battery_mv")},
+        }
+
+    async def detail(self, hours=None):
+        if not hasattr(self, "cache"):
+            self.cache = Cached(60)
+        return await self.cache.get(self._detail)
 
 
 # ------------------------------------------------------------------
@@ -615,6 +811,51 @@ class Weather(Collector):
         }
 
 
+    async def _detail(self):
+        params = {
+            "latitude": self.lat, "longitude": self.lon, "timezone": "auto", "past_days": 1, "forecast_days": 7,
+            "hourly": "temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_gusts_10m",
+            "daily": "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,precipitation_sum,"
+                     "sunrise,sunset,uv_index_max,wind_speed_10m_max",
+            "current": "relative_humidity_2m,wind_gusts_10m,uv_index,pressure_msl",
+            "timeformat": "unixtime",
+        }
+        if not self.metric:
+            params.update(temperature_unit="fahrenheit", wind_speed_unit="mph", precipitation_unit="inch")
+        fc, air = await asyncio.gather(
+            self.client.get("https://api.open-meteo.com/v1/forecast", params=params),
+            self.client.get("https://air-quality-api.open-meteo.com/v1/air-quality", params={
+                "latitude": self.lat, "longitude": self.lon, "timezone": "auto", "past_days": 1, "forecast_days": 2,
+                "hourly": "us_aqi,pm2_5", "timeformat": "unixtime"}),
+            return_exceptions=True)
+        if isinstance(fc, Exception):
+            raise fc
+        fc.raise_for_status()
+        fc = fc.json()
+        h, d = fc["hourly"], fc["daily"]
+        out = {
+            "hourly": {"t": h["time"], "temp": h["temperature_2m"], "feels": h["apparent_temperature"],
+                       "rain_pct": h["precipitation_probability"], "rain": h["precipitation"],
+                       "wind": h["wind_speed_10m"], "gusts": h["wind_gusts_10m"]},
+            "days": [{"t": d["time"][i], "high": round(d["temperature_2m_max"][i]), "low": round(d["temperature_2m_min"][i]),
+                      "sky": WEATHER_CODES.get(d["weather_code"][i], "—"), "rain_pct": d["precipitation_probability_max"][i],
+                      "rain": d["precipitation_sum"][i], "sunrise": d["sunrise"][i], "sunset": d["sunset"][i],
+                      "uv": d["uv_index_max"][i], "wind": d["wind_speed_10m_max"][i]} for i in range(len(d["time"]))],
+            "current": fc.get("current", {}),
+            "rain_unit": "MM" if self.metric else "IN",
+            "air": None,
+        }
+        if not isinstance(air, Exception) and air.status_code == 200:
+            a = air.json()["hourly"]
+            out["air"] = {"t": a["time"], "aqi": a["us_aqi"], "pm2_5": a["pm2_5"]}
+        return out
+
+    async def detail(self, hours=None):
+        if not hasattr(self, "cache"):
+            self.cache = Cached(900)
+        return await self.cache.get(self._detail)
+
+
 # ------------------------------------------------------------------
 # Indoor temperatures (ecobee), via Home Assistant's REST API
 # ------------------------------------------------------------------
@@ -687,7 +928,34 @@ class Indoor(Collector):
                           "humidity": thermostat["humidity"]})
         if not rooms:
             raise RuntimeError("no thermostat or sensors found in Home Assistant")
+        self.climate_id = climate_id
         return {"rooms": rooms, "thermostat": thermostat}
+
+    async def _detail(self):
+        climate_id = getattr(self, "climate_id", None) or self.thermostat
+        ids = [e for _, e in self.rooms] + ([climate_id] if climate_id else [])
+        hist = await ha_history(self.client, self.url, self.token, ids, 24 * 7)
+        rooms = []
+        for label, entity in self.rooms:
+            pts = []
+            for st in hist.get(entity, []):
+                p = [ha_ts(st), ha_number(st["state"])]
+                if not pts or pts[-1][1] != p[1]:
+                    pts.append(p)
+            rooms.append({"name": label.upper(), "points": pts})
+        thermo = []
+        for st in hist.get(climate_id, []):
+            a = st.get("attributes") or {}
+            p = [ha_ts(st), a.get("current_temperature"), a.get("current_humidity"), (a.get("hvac_action") or "").lower(),
+                 a.get("temperature"), a.get("target_temp_low"), a.get("target_temp_high")]
+            if not thermo or thermo[-1][1:] != p[1:]:
+                thermo.append(p)
+        return {"rooms": rooms, "thermostat": thermo}
+
+    async def detail(self, hours=None):
+        if not hasattr(self, "cache"):
+            self.cache = Cached(300)
+        return await self.cache.get(self._detail)
 
 
 # ------------------------------------------------------------------
@@ -743,19 +1011,34 @@ class HotTub(Collector):
             return None
         return state["state"] == "on"
 
+    @staticmethod
+    def _point(e):
+        a = e.get("attributes") or {}
+        # [time, water temp, target, heater running]; temp is None while the tub is offline
+        return [ha_ts(e), a.get("current_temperature"), a.get("temperature"), a.get("hvac_action") == "heating"]
+
     async def _refresh_history(self):
-        start = datetime.fromtimestamp(time.time() - self.HISTORY_HOURS * 3600, timezone.utc)
-        data = await self._get("/api/history/period/" + start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                               filter_entity_id=self.climate, significant_changes_only="0")
-        points = []
-        for e in (data or [[]])[0]:
-            a = e.get("attributes") or {}
-            ts = datetime.fromisoformat(e["last_updated"].replace("Z", "+00:00")).timestamp()
-            # [time, water temp, target, heater running]; temp is None while the tub is offline
-            points.append([round(ts), a.get("current_temperature"), a.get("temperature"),
-                           a.get("hvac_action") == "heating"])
-        self.history = points
+        hist = await ha_history(self.client, self.url, self.token, [self.climate], self.HISTORY_HOURS)
+        self.history = [self._point(e) for e in hist.get(self.climate, [])]
         self.history_at = time.time()
+
+    # --- full-screen detail view: a week of history, fetched only while someone is looking ---
+
+    async def _detail(self):
+        ids = [self.climate, self.related["power"], self.related["filter"]]
+        hist = await ha_history(self.client, self.url, self.token, ids, 24 * 7)
+        points = []   # repeats dropped: a week of raw rows is thousands
+        for e in hist.get(self.climate, []):
+            p = self._point(e)
+            if not points or points[-1][1:] != p[1:]:
+                points.append(p)
+        switch = lambda eid: [[ha_ts(e), self._on(e)] for e in hist.get(eid, [])]
+        return {"days": 7, "history": points, "power": switch(ids[1]), "filter": switch(ids[2])}
+
+    async def detail(self, hours=None):
+        if not hasattr(self, "cache"):
+            self.cache = Cached(300)
+        return await self.cache.get(self._detail)
 
     async def collect(self):
         climate = await self._get("/api/states/" + self.climate)
@@ -897,3 +1180,6 @@ class Repeater(Collector):
             "last_error": self.last_error,   # shown small if the latest attempt failed but older data exists
             "readings": history,
         }
+
+    async def detail(self, hours=None):
+        return {"readings": self.history(days=self.KEEP_DAYS), "poll_minutes": self.poll_seconds // 60}

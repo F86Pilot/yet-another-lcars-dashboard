@@ -2,6 +2,7 @@
 LCARS dashboard backend.
 
   GET /api/status   -> everything the page shows, as one JSON blob
+  GET /api/detail/X -> extra data for panel X's full-screen view (e.g. hottub)
   GET /             -> the LCARS page itself (files in ./static)
 
 Each collector (see collectors.py) runs in its own background loop.
@@ -14,7 +15,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 import collectors as c
@@ -46,6 +47,11 @@ async def run_collector(col):
     while True:
         try:
             entry["data"] = await col.collect()
+            if hasattr(col, "sample"):   # system panels: keep minute averages for the detail graphs
+                try:
+                    c.HISTORY.add(col.name, col.sample(entry["data"]))
+                except Exception as exc:
+                    log.warning("%s: history not saved: %s", col.name, exc)
             entry["updated_at"] = iso(time.time())
             if not entry["ok"]:
                 log.info("%s: back online", col.name)
@@ -92,6 +98,18 @@ async def no_stale_pages(request, call_next):
 def status():
     return {"generated_at": iso(time.time()),
             "title": c.env("DASHBOARD_TITLE", "HOME LAB OPERATIONS"), **STATE}
+
+
+@app.get("/api/detail/{name}")
+async def detail(name: str, hours: float = 24):
+    """Extra data for a panel's full-screen view (longer history), only asked for while it's open."""
+    col = next((col for col in COLLECTORS if col.name == name and hasattr(col, "detail")), None)
+    if col is None or not col.configured():
+        raise HTTPException(404, "no detail view for " + name)
+    try:
+        return await col.detail(hours=hours)
+    except Exception as exc:
+        raise HTTPException(502, str(exc) or exc.__class__.__name__)
 
 
 # Must come last: anything that isn't /api/... is treated as a file in ./static

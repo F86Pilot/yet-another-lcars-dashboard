@@ -26,6 +26,18 @@ This one is wired to **my** setup. Out of the box it supports:
 | **Hot tub** | Home Assistant, via the [ha-bestway](https://github.com/cdpuk/ha-bestway) add-on (Bestway / Lay-Z-Spa / SaluSpa) | Water vs target temperature, power / heater / filter lights, error codes, and a 24-hour chart of water temperature with heater-on time. Shares the Outside spot: it flips every 20 s, or tap. |
 | **Indoor climate** | Home Assistant REST API (an ecobee in my case) | Room temperatures, thermostat setpoint and mode. |
 
+**Full-screen views:** tap any panel's title bar for a bigger view with longer graphs. BACK, or 60 seconds untouched, goes back to the overview.
+
+| Panel | Full-screen view |
+|---|---|
+| Server / NAS / Mac | CPU, memory and network graphs over 1 hour, 24 hours or 7 days, all three top-app lists at once, disk growth per day, peak temperature. History is saved as one-minute averages in `data/history.db` (kept 8 days), so the graphs start filling after the update. |
+| Plex | Now playing, plays per day for 30 days, top shows, movies and viewers this week, library size, the last 60 plays. |
+| MeshCore | The last 24 hours of messages, messages per hour by channel, busiest channels and senders, the local radio's signal and packet counts, nodes heard in the last 7 days. |
+| Solar repeater | Battery over 4 or 14 days, each day's low-to-peak range, packets relayed per hour, noise floor. |
+| Outside | Temperature and feels-like for the past day and next two (or the coming week), chance of rain, a 7-day forecast, sunrise / sunset / UV, air quality for the past and next 24 hours. |
+| Indoor | Each room's temperature with the set point and heating / cooling periods over 24 hours to 7 days, humidity, HVAC hours per day. |
+| Hot tub | Water vs target over 24 hours to 7 days with heating and filter runs, heat-up and cool-down rates, time to target, heater hours per day. |
+
 **Hot tub note:** some Bestway pumps (mine is an UltraFit AirJet) report their readings with short names (`Tnow`, `Tset`, `heat`) that ha-bestway 1.11.1 ignores, so the temperature shows as *unknown* in Home Assistant. [`docs/ha-bestway-v1-short-names.patch`](docs/ha-bestway-v1-short-names.patch) is a three-line fix for the add-on. Updating the add-on removes it, so you'd have to apply it again.
 
 Any panel whose settings are blank in `.env` just shows "not configured". You don't need all of them.
@@ -53,7 +65,7 @@ The code is small and plain on purpose, so it's easy to change:
 | File | What it does |
 |---|---|
 | `app/collectors.py` | One class per data source. Each one runs on its own timer and keeps its latest result. |
-| `app/main.py` | FastAPI backend. Runs the collectors and serves `/api/status` and the page. |
+| `app/main.py` | FastAPI backend. Runs the collectors and serves `/api/status`, `/api/detail/<panel>` (extra data for full-screen views) and the page. |
 | `app/static/` | The page: `index.html`, `lcars.css` (all the LCARS shapes) and `app.js` (polls `/api/status` every 3 s and draws the panels). |
 | `app/static/sounds/` | Key-press sounds. One is picked at random on each tap. |
 | `mac-helper/` | Small stats server for a Mac, plus a LaunchAgent installer. |

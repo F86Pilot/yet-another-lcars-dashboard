@@ -1,0 +1,15 @@
+--- a/custom_components/bestway/smartspa/api.py
++++ b/custom_components/bestway/smartspa/api.py
+@@ -358,6 +358,12 @@
+ 
+                 # Same shadow vocabulary as the AWS IoT backend serves.
+                 mapped = v01_attrs_from_shadow(shadow)
++                # LOCAL PATCH: some pumps (e.g. ULTRAFIT_AIRJET_V02) already
++                # report the short V01 names (Tnow, Tset, power, heat, filter,
++                # wave, E01..). The V02 mapper finds none of its long names and
++                # returns {}, so pass those shadows straight through instead.
++                if not mapped and "Tnow" in shadow:
++                    mapped = dict(shadow)
+ 
+                 # Read-back quirk: this gateway reads wave_state back as
+                 # binary (1, sometimes 2) while running, but the 3-way

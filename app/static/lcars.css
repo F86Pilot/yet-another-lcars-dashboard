@@ -325,7 +325,30 @@ span > .key:not(:first-child) { margin-left: 10px; }
 
 /* solar repeater (shares the MeshCore spot) */
 .swap-hidden { display: none !important; }
-#p-mesh, #p-repeater { cursor: pointer; }
+#p-mesh, #p-repeater, #p-weather, #p-hottub { cursor: pointer; }
+
+/* hot tub (shares the Outside spot): status lights in the header, numbers + 24 h chart below */
+.ind { color: #000; padding: 0 8px; font-size: 14px; font-weight: 600; flex: none; }
+.ind:not(.on) { background: var(--dim); color: var(--lavender); }
+#ht-cap.alert { background: var(--red); }
+.ht-body { align-items: stretch; }
+.ht-body .cell { display: flex; flex-direction: column; justify-content: flex-end; }
+.ht-body .bignum { min-width: 100px; }   /* same height as the Outside numbers, so swapping never shifts the layout */
+.ht-chart { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-left: 10px; border-left: 6px solid var(--c); }
+.ht-legend { display: flex; gap: 10px; font-size: 12px; color: var(--lavender); white-space: nowrap; overflow: hidden; }
+.ht-legend .k-water { color: var(--peach); }
+.ht-legend .k-target { color: var(--tan); }
+.ht-legend .k-heat { color: var(--orange); }
+/* the chart fills whatever height the number blocks give the row, never more */
+.ht-plot { flex: 1 1 0; min-height: 0; position: relative; margin-top: 3px; }
+.ht-plot .rp-axis { position: absolute; left: 0; top: 0; bottom: 0; width: 24px; }
+.ht-svg { position: absolute; left: 29px; right: 0; top: 0; bottom: 0; width: calc(100% - 29px); height: 100%; border-left: 2px solid var(--dim); border-bottom: 2px solid var(--dim); }
+.ht-svg .heat { fill: var(--orange); opacity: 0.45; }
+.ht-svg .water { fill: none; stroke: var(--peach); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.ht-svg .target { fill: none; stroke: var(--tan); stroke-width: 1.5; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
+.ht-svg .mid { stroke: var(--dim); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ht-svg circle { fill: var(--peach); }
+.ht-empty { font-size: 12px; fill: var(--lavender); }
 .rp-top .bignum { font-size: 34px; min-width: 104px; padding-top: 5px; padding-bottom: 3px; }
 .rp-top .bignum .dg { font-size: 0.45em; margin-top: 0.1em; }
 .rp-top + .sub-bar { margin-top: 10px; }
@@ -385,7 +408,9 @@ body.stale .panels { opacity: 0.45; }
   .mesh { gap: 7px; }
   .mesh li { font-size: 15px; }
 
-  /* outside / indoor row */
+  /* outside / indoor row. Outside and the hot tub take turns in one spot, so they get the
+     same fixed height: flipping between them never nudges the rest of the screen. */
+  #p-weather .clim, #p-hottub .ht-body { height: 92px; }
   .bignum { font-size: 50px; }
 }
 

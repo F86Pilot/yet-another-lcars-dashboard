@@ -691,6 +691,102 @@ class Indoor(Collector):
 
 
 # ------------------------------------------------------------------
+# Hot tub (Bestway / Lay-Z-Spa / SaluSpa), via Home Assistant
+# ------------------------------------------------------------------
+
+class HotTub(Collector):
+    """
+    A hot tub that Home Assistant already knows about (e.g. through the ha-bestway add-on).
+
+    HOTTUB_THERMOSTAT is its climate.* entity, e.g. climate.back_patio_hot_tub_spa_thermostat.
+    The add-on names the other entities after it (…_power, …_filter, …_errors), so those are
+    found automatically. The 24-hour graph comes from Home Assistant's own history.
+    """
+    name = "hottub"
+    interval = 30
+    HISTORY_HOURS = 24
+    HISTORY_EVERY = 300   # seconds between history refreshes
+
+    def __init__(self, client):
+        self.client = client
+        self.url = (env("HA_URL") or "").rstrip("/")
+        self.token = env("HA_TOKEN")
+        self.climate = env("HOTTUB_THERMOSTAT")
+        self.label = env("HOTTUB_NAME", "HOT TUB")
+        base = (self.climate or "").split(".", 1)[-1]
+        if base.endswith("_thermostat"):
+            base = base[: -len("_thermostat")]
+        self.related = {
+            "power": "switch.%s_power" % base,
+            "filter": "switch.%s_filter" % base,
+            "errors": "binary_sensor.%s_errors" % base,
+            "connected": "binary_sensor.%s_connected" % base,
+            "bubbles": "select.%s_bubbles" % base,
+        }
+        self.history = []
+        self.history_at = 0
+
+    def configured(self):
+        return bool(self.url and self.token and self.climate)
+
+    async def _get(self, path, **params):
+        r = await self.client.get(self.url + path, params=params or None,
+                                  headers={"Authorization": "Bearer " + self.token})
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.json()
+
+    @staticmethod
+    def _on(state):
+        if state is None or state["state"] in ("unknown", "unavailable"):
+            return None
+        return state["state"] == "on"
+
+    async def _refresh_history(self):
+        start = datetime.fromtimestamp(time.time() - self.HISTORY_HOURS * 3600, timezone.utc)
+        data = await self._get("/api/history/period/" + start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                               filter_entity_id=self.climate, significant_changes_only="0")
+        points = []
+        for e in (data or [[]])[0]:
+            a = e.get("attributes") or {}
+            ts = datetime.fromisoformat(e["last_updated"].replace("Z", "+00:00")).timestamp()
+            # [time, water temp, target, heater running]; temp is None while the tub is offline
+            points.append([round(ts), a.get("current_temperature"), a.get("temperature"),
+                           a.get("hvac_action") == "heating"])
+        self.history = points
+        self.history_at = time.time()
+
+    async def collect(self):
+        climate = await self._get("/api/states/" + self.climate)
+        if climate is None:
+            raise RuntimeError("%s not found in Home Assistant" % self.climate)
+        related = {k: await self._get("/api/states/" + eid) for k, eid in self.related.items()}
+        if time.time() - self.history_at > self.HISTORY_EVERY:
+            await self._refresh_history()
+
+        a = climate["attributes"]
+        errors = related["errors"]
+        bubbles = related["bubbles"]
+        return {
+            "label": self.label,
+            "temp": a.get("current_temperature"),
+            "target": a.get("temperature"),
+            "unit": a.get("temperature_unit") or "°F",
+            "mode": climate["state"],                 # heat / off / unknown
+            "action": a.get("hvac_action"),           # heating / idle / off
+            "power": self._on(related["power"]),
+            "filter": self._on(related["filter"]),
+            "connected": self._on(related["connected"]),
+            "bubbles": bubbles["state"] if bubbles and bubbles["state"] not in ("unknown", "unavailable") else None,
+            "error": self._on(errors),
+            "errors": (errors or {}).get("attributes", {}).get("errors") or [],
+            "history": self.history,
+            "history_hours": self.HISTORY_HOURS,
+        }
+
+
+# ------------------------------------------------------------------
 # Solar repeater telemetry (MeshCore, via RemoteTerm)
 # ------------------------------------------------------------------
 

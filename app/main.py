@@ -33,6 +33,7 @@ COLLECTORS = [
     c.MeshCore(client),
     c.Weather(client),
     c.Indoor(client),
+    c.HotTub(client),
     c.Repeater(client),
 ]
 

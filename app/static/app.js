@@ -449,16 +449,92 @@ function renderIndoor(entry) {
     <div class="line">MODE <b>${esc(t.mode)}</b></div>`;
 }
 
+// ---------- hot tub (via Home Assistant) ----------
+// Shares the Outside spot: tap to switch, and it also flips by itself every 20 seconds.
+
+function renderHotTub(entry) {
+  const panel = $("p-hottub");
+  htConfigured = entry.configured;
+  const d = panelState(panel, entry);
+  if (!d) return;
+  $("ht-name").textContent = d.label.toUpperCase();
+  $("ht-temp").innerHTML = deg(d.temp);
+  $("ht-target").innerHTML = deg(d.target);
+
+  // Header lights: lit = on, dim = off
+  const heating = d.action === "heating";
+  const light = (id, on, text, color) => {
+    const el = $(id);
+    el.textContent = text;
+    el.className = "ind" + (on ? ` on ${color}` : "");
+  };
+  light("ht-power", d.power, "POWER", "c-blue");
+  light("ht-heat", heating || d.mode === "heat", heating ? "HEATING" : "HEATER", heating ? "c-orange" : "c-tan");
+  light("ht-filter", d.filter, "FILTER", "c-lavender");
+  const cap = $("ht-cap");
+  const problem = d.connected === false ? "OFFLINE"
+    : d.errors.length ? d.errors.join(" ").toUpperCase() : d.error ? "ERROR" : "";
+  cap.textContent = problem || "OK";
+  cap.classList.toggle("alert", !!problem);
+
+  // 24 h chart: heater-on bands behind the water temperature, target as a dashed line.
+  // Each reading holds until the next one, so both lines are drawn as steps.
+  const end = Date.now() / 1000, start = end - d.history_hours * 3600;
+  const pts = d.history.slice();
+  if (d.temp != null) pts.push([end, d.temp, d.target, heating]);   // reach "now" between history refreshes
+  const segs = [];
+  pts.forEach((p, i) => {
+    const t1 = i + 1 < pts.length ? pts[i + 1][0] : end;
+    const t0 = Math.max(p[0], start);
+    if (t1 > t0) segs.push({ t0, t1, temp: p[1], target: p[2], heat: p[3] });
+  });
+  const svg = $("ht-svg");
+  const vals = segs.flatMap((s) => [s.temp, s.target]).filter((v) => v != null);
+  if (!vals.length) {
+    svg.innerHTML = `<text class="ht-empty" x="150" y="55" text-anchor="middle">COLLECTING HISTORY</text>`;
+    $("ht-hi").textContent = $("ht-lo").textContent = "";
+    return;
+  }
+  let lo = Math.floor(Math.min(...vals) - 1), hi = Math.ceil(Math.max(...vals) + 1);
+  if (hi - lo < 6) { lo = Math.floor((hi + lo) / 2 - 3); hi = lo + 6; }
+  const x = (t) => ((t - start) / (end - start)) * 300;
+  const y = (v) => 96 - ((v - lo) / (hi - lo)) * 92;
+  const steps = (key, cls) => {
+    const runs = [[]];
+    segs.forEach((s) => {
+      if (s[key] == null) { runs.push([]); return; }
+      runs[runs.length - 1].push(`${x(s.t0).toFixed(1)},${y(s[key]).toFixed(1)} ${x(s.t1).toFixed(1)},${y(s[key]).toFixed(1)}`);
+    });
+    return runs.filter((r) => r.length).map((r) => `<polyline class="${cls}" points="${r.join(" ")}"/>`).join("");
+  };
+  const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+  const mid = midnight.getTime() / 1000;
+  svg.innerHTML =
+    (mid > start ? `<line class="mid" x1="${x(mid).toFixed(1)}" y1="0" x2="${x(mid).toFixed(1)}" y2="100"/>` : "")
+    + segs.filter((s) => s.heat).map((s) =>
+      `<rect class="heat" x="${x(s.t0).toFixed(1)}" y="0" width="${Math.max(0.8, x(s.t1) - x(s.t0)).toFixed(1)}" height="100"/>`).join("")
+    + steps("target", "target") + steps("temp", "water")
+    + (d.temp != null ? `<circle cx="299" cy="${y(d.temp).toFixed(1)}" r="2.5"/>` : "");
+  $("ht-hi").textContent = `${hi}°`;
+  $("ht-lo").textContent = `${lo}°`;
+}
+
 // ---------- solar repeater ----------
 // Shares the MeshCore spot: tap to switch, and it also flips by itself every 20 seconds.
 
 const RP_DAYS = 4;
-let rpShowing = false, rpConfigured = false;
-function swapMeshRepeater(show) {
-  rpShowing = rpConfigured && (show ?? !rpShowing);
-  $("p-mesh").classList.toggle("swap-hidden", rpShowing);
-  $("p-repeater").classList.toggle("swap-hidden", !rpShowing);
+// Two panels sharing one spot. ready() says whether the second one has anything to show.
+function swapPair(mainId, altId, ready) {
+  let showingAlt = false;
+  return (show) => {
+    showingAlt = ready() && (show ?? !showingAlt);
+    $(mainId).classList.toggle("swap-hidden", showingAlt);
+    $(altId).classList.toggle("swap-hidden", !showingAlt);
+  };
 }
+let rpConfigured = false, htConfigured = false;
+const swapMeshRepeater = swapPair("p-mesh", "p-repeater", () => rpConfigured);
+const swapWeatherHotTub = swapPair("p-weather", "p-hottub", () => htConfigured);
 
 function renderRepeater(entry) {
   const panel = $("p-repeater");
@@ -552,6 +628,7 @@ async function poll() {
     renderWeather(data.weather);
     renderIndoor(data.indoor);
     renderRepeater(data.repeater);
+    if (data.hottub) renderHotTub(data.hottub);
 
     if (data.title) $("title").textContent = data.title.toUpperCase();
     $("link-status").textContent = "LINK ESTABLISHED";
@@ -567,8 +644,12 @@ setupSystemPanels();
 onTap($("p-mesh"), () => { chirp(); swapMeshRepeater(); });
 onTap($("p-repeater"), () => { chirp(); swapMeshRepeater(); });
 document.querySelectorAll(".buttons a").forEach((a) => a.addEventListener("click", () => chirp()));
-// Auto-switch every 20 s, but not while someone is reading/scrolling the messages
+onTap($("p-weather"), () => { if (htConfigured) { chirp(); swapWeatherHotTub(); } });
+onTap($("p-hottub"), () => { chirp(); swapWeatherHotTub(); });
+// Auto-switch every 20 s, but not while someone is reading/scrolling the messages.
+// Outside / hot tub runs 10 s out of step, so the two spots don't flip at the same moment.
 setInterval(() => { if (Date.now() - lastTouch > IDLE_MS) swapMeshRepeater(); }, 20000);
+setTimeout(() => setInterval(() => { if (Date.now() - lastTouch > IDLE_MS) swapWeatherHotTub(); }, 20000), 10000);
 tickClock();
 setInterval(tickClock, 1000);
 poll();

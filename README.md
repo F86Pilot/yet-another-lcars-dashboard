@@ -23,7 +23,10 @@ This one is wired to **my** setup. Out of the box it supports:
 | **MeshCore** | [RemoteTerm](https://github.com/jkingsman/Remote-Terminal-for-MeshCore) API | Latest mesh messages. Tap to switch to the repeater panel. |
 | **Solar repeater** | MeshCore repeater status, requested over the mesh through RemoteTerm | Battery voltage over 4 days, packets relayed per hour, airtime. |
 | **Outside** | [Open-Meteo](https://open-meteo.com/) (free, no key) | Temperature, feels-like, wind, today's high and low, air quality. |
+| **Hot tub** | Home Assistant, via the [ha-bestway](https://github.com/cdpuk/ha-bestway) add-on (Bestway / Lay-Z-Spa / SaluSpa) | Water vs target temperature, power / heater / filter lights, error codes, and a 24-hour chart of water temperature with heater-on time. Shares the Outside spot: it flips every 20 s, or tap. |
 | **Indoor climate** | Home Assistant REST API (an ecobee in my case) | Room temperatures, thermostat setpoint and mode. |
+
+**Hot tub note:** some Bestway pumps (mine is an UltraFit AirJet) report their readings with short names (`Tnow`, `Tset`, `heat`) that ha-bestway 1.11.1 ignores, so the temperature shows as *unknown* in Home Assistant. [`docs/ha-bestway-v1-short-names.patch`](docs/ha-bestway-v1-short-names.patch) is a three-line fix for the add-on. Updating the add-on removes it, so you'd have to apply it again.
 
 Any panel whose settings are blank in `.env` just shows "not configured". You don't need all of them.
 

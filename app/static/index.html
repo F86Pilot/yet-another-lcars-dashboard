@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="lcars.css?v=30">
+  <link rel="stylesheet" href="lcars.css?v=35">
 </head>
 <body>
 <div class="lcars">
@@ -116,6 +116,22 @@
           </div>
         </section>
 
+        <!-- Hot tub: shares the Outside spot; tap either panel to switch -->
+        <section class="panel span-6 swap-hidden" id="p-hottub" style="--c:var(--blue)">
+          <h2 class="panel-head"><span class="ph-name" id="ht-name">HOT TUB</span><span class="ph-fill"></span><span class="ind" id="ht-power">POWER</span><span class="ind" id="ht-heat">HEATER</span><span class="ind" id="ht-filter">FILTER</span><span class="ptag"></span><span class="ph-cap" id="ht-cap"></span></h2>
+          <div class="clim ht-body">
+            <div class="cell"><div class="label">WATER</div><div class="bignum c-peach" id="ht-temp">—</div></div>
+            <div class="cell"><div class="label">TARGET</div><div class="bignum c-tan" id="ht-target">—</div></div>
+            <div class="ht-chart">
+              <div class="ht-legend"><span>24 HRS</span><span class="k-water">━ WATER</span><span class="k-target">┅ TARGET</span><span class="k-heat">▮ HEATING</span></div>
+              <div class="ht-plot">
+                <div class="rp-axis"><span id="ht-hi"></span><span id="ht-lo"></span></div>
+                <svg id="ht-svg" class="ht-svg" viewBox="0 0 300 100" preserveAspectRatio="none" aria-label="Water temperature and heater, last 24 hours"></svg>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- Inside: thermostat sensors, via Home Assistant -->
         <section class="panel span-6" id="p-indoor" style="--c:var(--purple)">
           <h2 class="panel-head"><span class="ph-name">INDOOR CLIMATE</span><span class="ph-fill"></span><span class="ptag"></span><span class="ph-cap"></span></h2>
@@ -148,6 +164,6 @@
   <ol class="tops" hidden></ol>
 </template>
 
-<script src="app.js?v=30"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>

@@ -351,6 +351,7 @@ span > .key:not(:first-child) { margin-left: 10px; }
 .ht-empty { font-size: 12px; fill: var(--lavender); }
 .rp-top .bignum { font-size: 34px; min-width: 104px; padding-top: 5px; padding-bottom: 3px; }
 .rp-top .bignum .dg { font-size: 0.45em; margin-top: 0.1em; }
+.rp-top .bignum.low { background: var(--red); }
 .rp-top + .sub-bar { margin-top: 10px; }
 .rp-chart { display: grid; grid-template-columns: 34px 1fr; gap: 6px; margin-top: 6px; flex: 1; min-height: 50px; }
 .rp-axis { position: relative; font-size: 12px; color: var(--lavender); font-variant-numeric: tabular-nums; }

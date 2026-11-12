@@ -523,6 +523,7 @@ function renderHotTub(entry) {
 // Shares the MeshCore spot: tap to switch, and it also flips by itself every 20 seconds.
 
 const RP_DAYS = 4;
+const RP_LOW_VOLTS = 3.6;
 // Two panels sharing one spot. ready() says whether the second one has anything to show.
 function swapPair(mainId, altId, ready) {
   let showingAlt = false;
@@ -546,6 +547,8 @@ function renderRepeater(entry) {
   if (!rows.length) return;
   const last = rows[rows.length - 1];
   $("rp-now").innerHTML = `${last.battery_volts.toFixed(2)}<span class="dg">V</span>`;
+  // Red once the cell is nearly empty (a Li-ion cell has little left below ~3.6 V)
+  $("rp-now").classList.toggle("low", last.battery_volts < RP_LOW_VOLTS);
   // Header end cap: uptime, like the system panels
   panel.querySelector(".ph-cap").textContent = last.uptime_seconds != null ? fmtUptime(last.uptime_seconds).split(" ")[0] : "";
 

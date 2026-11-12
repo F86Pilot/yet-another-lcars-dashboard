@@ -55,7 +55,9 @@ async def run_collector(col):
             if entry["error"] != message:
                 log.warning("%s: %s", col.name, message)
             entry["ok"], entry["error"] = False, message
-        await asyncio.sleep(col.interval)
+        # After a failure, try again within a minute instead of waiting a full slow interval
+        # (weather is every 10 min, so one internet blip would blank it for 10 min)
+        await asyncio.sleep(col.interval if entry["ok"] else min(col.interval, 60))
 
 
 @asynccontextmanager

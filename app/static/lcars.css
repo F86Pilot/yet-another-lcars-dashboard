@@ -408,9 +408,9 @@ body.stale .panels { opacity: 0.45; }
   .mesh { gap: 7px; }
   .mesh li { font-size: 15px; }
 
-  /* outside / indoor row. Outside and the hot tub take turns in one spot, so they get the
-     same fixed height: flipping between them never nudges the rest of the screen. */
-  #p-weather .clim, #p-hottub .ht-body { height: 92px; }
+  /* outside / indoor row. Every panel here gets the same fixed content height, so the
+     big numbers line up across the row, and flipping Outside / hot tub never nudges the screen. */
+  #p-weather .clim, #p-hottub .ht-body, #p-indoor .clim { height: 92px; }
   .bignum { font-size: 50px; }
 }
 

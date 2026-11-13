@@ -1265,9 +1265,10 @@ const DETAILS = {
   weather: { panel: "d-weather", ready: configured("weather"), render: renderWeatherDetail, range: "weather" },
   indoor: { panel: "d-indoor", ready: configured("indoor"), render: renderIndoorDetail, range: "indoor" },
   hottub: { panel: "d-hottub", ready: configured("hottub"), render: () => renderHotTubDetail(), range: "hottub" },
+  tesla: { panel: "d-tesla", ready: configured("tesla"), render: () => renderTeslaDetail(), range: "tesla", refetch: true },
 };
 // Each view opens on its first range button
-const DEFAULT_HOURS = { sys: 24, repeater: 96, weather: 48, indoor: 24, hottub: 24 };
+const DEFAULT_HOURS = { sys: 24, repeater: 96, weather: 48, indoor: 24, hottub: 24, tesla: 168 };
 const detailHours = { ...DEFAULT_HOURS };
 let openKey = null;
 const detailData = {};
@@ -1438,6 +1439,192 @@ function renderRepeater(entry) {
   $("rp-when").title = d.last_error || "";
 }
 
+// ---------- tesla (via TeslaMate) ----------
+// Shares the Plex spot: tap to switch, and it also flips by itself every 20 seconds.
+
+let tsConfigured = false;
+const swapPlexTesla = swapPair("p-plex", "p-tesla", () => tsConfigured);
+
+// What the car is doing, as a headline + a color class
+function teslaState(d) {
+  if (d.state === "driving") return { text: "DRIVING", cls: "driving" };
+  if (d.state === "charging" || d.charging_state === "Charging") return { text: "CHARGING", cls: "charging" };
+  if (d.state === "updating") return { text: "INSTALLING UPDATE", cls: "charging" };
+  if (d.state === "asleep") return { text: "ASLEEP", cls: "idle" };
+  if (d.state === "offline") return { text: "OFFLINE", cls: "off" };
+  if (d.state === "suspended") return { text: "PARKED · DOZING", cls: "idle" };   // TeslaMate letting it fall asleep
+  return { text: "PARKED", cls: "" };
+}
+
+const fmtDist = (v, unit, digits = 0) => (v == null ? "—" : `${Number(v.toFixed(digits)).toLocaleString()} ${unit.toUpperCase()}`);
+const fmtHrs = (h) => (h == null ? "—" : fmtDur(h));
+const fmtMinutes = (m) => (m == null ? "—" : fmtDur(m / 60));
+const fmtDay = (ts) => new Date(ts * 1000).toLocaleDateString([], { month: "short", day: "numeric" }).toUpperCase();
+const fmtWhen = (ts) => { const d = new Date(ts * 1000); return `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")}${d.getHours() < 12 ? "A" : "P"}`; };
+const fmtMoney = (v) => (v == null ? "" : `$${v.toFixed(2)}`);
+const pctHtml = (v) => (v == null ? "—" : `${Math.round(v)}<span class="dg">%</span>`);
+const distHtml = (v, unit) => (v == null ? "—" : `${Math.round(v)}<span class="dg">${unit.toUpperCase()}</span>`);
+
+// Big numbers + header light, shared by the panel and its full-screen view
+function teslaTop(d, ids) {
+  $(ids.batt).innerHTML = pctHtml(d.battery);
+  $(ids.batt).classList.toggle("low", d.battery != null && d.battery <= 20);
+  $(ids.range).innerHTML = distHtml(d.range, d.unit);
+  const st = teslaState(d);
+  $(ids.state).textContent = st.text;
+  $(ids.state).className = `headline ${st.cls}`;
+  const plug = $(ids.plug);
+  plug.className = "ind" + (d.plugged_in ? (d.charging_state === "Charging" ? " on c-orange" : " on c-blue") : "");
+  plug.textContent = d.plugged_in ? (d.charging_state === "Charging" ? "CHARGING" : "PLUGGED IN") : "UNPLUGGED";
+}
+
+// One line about charging: live numbers while charging, else the last session
+function chargeSummary(d) {
+  if (d.charging_state === "Charging") {
+    return `<b>${d.charger_power ?? "—"} KW</b> · +<b>${d.charge_added ?? 0} KWH</b> · FULL IN <b>${fmtHrs(d.time_to_full)}</b>`;
+  }
+  const c = d.last_charge;
+  if (!c) return d.plugged_in ? "PLUGGED IN · NO SESSIONS LOGGED YET" : "NO CHARGING SESSIONS LOGGED YET";
+  return `LAST CHARGE <b>${fmtDay(c.start)}</b> · +<b>${c.kwh ?? "—"} KWH</b> · <b>${c.from_pct ?? "—"}→${c.to_pct ?? "—"}%</b>`;
+}
+
+function renderTesla(entry) {
+  const panel = $("p-tesla");
+  tsConfigured = !!(entry && entry.configured);
+  if (!entry) return;
+  const d = panelState(panel, entry);
+  if (!d) return;
+  $("ts-name").textContent = d.model ? `${d.label.toUpperCase()} · ${d.model}` : d.label.toUpperCase();
+  teslaTop(d, { batt: "ts-batt", range: "ts-range", state: "ts-state", plug: "ts-plug" });
+  $("ts-l1").innerHTML = d.since ? `SINCE <b>${fmtClock(new Date(d.since).getTime() / 1000)}</b> · ${fmtAgo(d.since)}` : "";
+  $("ts-l2").innerHTML = `ODOMETER <b>${fmtDist(d.odometer, d.unit)}</b>`;
+  const cap = $("ts-cap");
+  cap.textContent = d.update_available ? "UPDATE READY" : "";
+
+  // State-of-charge bar
+  const segs = $("ts-segs");
+  setSegs(segs, d.battery ?? 0, { hot: 101, crit: 101 });
+  if (d.battery != null && d.battery <= 20) [...segs.children].forEach((s) => { if (s.className) s.className = "crit"; });
+
+  // Charging: four readouts while it charges, otherwise the last session
+  const chg = $("ts-chg");
+  if (d.charging_state === "Charging") {
+    $("ts-chg-title").textContent = "CHARGING NOW";
+    const cells = [
+      ["POWER", `${d.charger_power ?? "—"}<small>KW</small>`],
+      ["ADDED", `${d.charge_added ?? 0}<small>KWH</small>`],
+      ["FULL IN", fmtHrs(d.time_to_full)],
+      ["SUPPLY", d.charger_volts > 50 ? `${Math.round(d.charger_volts)}<small>V</small> ${Math.round(d.charger_amps)}<small>A</small>` : "DC"],
+    ];
+    chg.innerHTML = `<div class="chg-cells">${cells.map(([k, v]) => `<div class="chg"><div class="label">${k}</div><b>${v}</b></div>`).join("")}</div>`;
+  } else {
+    const c = d.last_charge;
+    $("ts-chg-title").textContent = "LAST CHARGE";
+    const status = d.plugged_in
+      ? d.charging_state === "Complete" ? "PLUGGED IN · CHARGE COMPLETE"
+        : d.scheduled_charge ? `PLUGGED IN · SCHEDULED FOR ${fmtWhen(new Date(d.scheduled_charge).getTime() / 1000)}`
+          : `PLUGGED IN · ${String(d.charging_state || "NOT CHARGING").toUpperCase()}`
+      : "NOT PLUGGED IN";
+    chg.innerHTML = `<div class="dv-facts">
+      ${c ? `<div class="line"><b>${fmtDay(c.start)} ${fmtWhen(c.start)}</b> · +<b>${c.kwh ?? "—"} KWH</b> · <b>${c.from_pct ?? "—"}% → ${c.to_pct ?? "—"}%</b> · ${fmtMinutes(c.minutes)}</div>
+             <div class="line">${c.fast ? `<b class="sc">SUPERCHARGER</b> · ` : ""}${esc(String(c.place || "").toUpperCase())}${c.cost != null ? ` · <b>${fmtMoney(c.cost)}</b>` : ""}</div>`
+        : `<div class="line">NO CHARGING SESSIONS LOGGED YET</div>`}
+      <div class="line">${status}</div></div>`;
+  }
+
+  // Battery level, last 24 hours
+  const end = Date.now() / 1000, start = end - 86400;
+  const pts = d.battery_24h.slice();
+  if (d.battery != null) pts.push([end, d.battery]);
+  const { grid, ticks } = timeGrid(start, end);
+  drawTicks($("ts-ticks"), ticks, start, end);
+  drawAxis($("ts-axis"), 0, 100, { n: 2, fmt: (v) => `${v}` });
+  $("ts-svg").innerHTML = pts.length
+    ? chartSvg({ start, end, lo: 0, hi: 100, grid,
+        lines: [{ pts, cls: "l-peach", step: true }] })
+    : "";
+  if (!pts.length) emptyChart($("ts-svg"), "COLLECTING HISTORY");
+}
+
+// ---------- tesla full-screen view ----------
+
+function tripItem({ ts, title, meta, tag }) {
+  return `<li><div class="tr-when"><b>${fmtDay(ts)}</b>${fmtWhen(ts)}</div>
+    <div class="tr-body"><div class="tr-title">${tag || ""}${esc(title)}</div><div class="tr-meta">${meta}</div></div></li>`;
+}
+
+function renderTeslaDetail() {
+  const entry = lastStatus.tesla, d = entry && entry.data, x = detailData.tesla;
+  panelState($("d-tesla"), entry);
+  if (!d) return;
+  const unit = d.unit.toUpperCase();
+  $("dt-name").textContent = `${d.label.toUpperCase()}${d.model ? ` · ${d.model}` : ""} · DETAIL`;
+  teslaTop(d, { batt: "dt-batt", range: "dt-range", state: "dt-state", plug: "dt-plug" });
+  $("dt-l1").innerHTML = d.since ? `SINCE <b>${fmtClock(new Date(d.since).getTime() / 1000)}</b> · ${fmtAgo(d.since)} · ODOMETER <b>${fmtDist(d.odometer, d.unit)}</b>` : "";
+  $("dt-l2").innerHTML = chargeSummary(d);
+  $("dt-l3").innerHTML = `SOFTWARE <b>${esc(d.version || "—")}</b>${d.update_available ? ` · <b class="alert">UPDATE READY</b>` : ""}`;
+  if (!x) return;
+
+  // Battery % with charging (orange) and driving (blue) shaded behind it
+  const end = Date.now() / 1000, start = end - x.hours * 3600;
+  const pts = x.battery.map((b) => [b[0], b[1]]);
+  if (d.battery != null) pts.push([end, d.battery]);
+  const { grid, ticks } = timeGrid(start, end);
+  drawTicks($("dt-ticks"), ticks, start, end);
+  drawAxis($("dt-axis"), 0, 100, { n: 4, fmt: (v) => `${v}%` });
+  const bands = [...x.charges.map((c) => ({ t0: c.start, t1: c.end, cls: "heat" })),
+                 ...x.drives.map((r) => ({ t0: r.start, t1: r.end, cls: "cool" }))];
+  if (pts.length) {
+    $("dt-svg").innerHTML = chartSvg({ start, end, lo: 0, hi: 100, W: 600, H: 200, grid, bands,
+      lines: [{ pts, cls: "l-peach", step: true }] });
+    const s = statOf(pts);
+    $("dt-batt-note").textContent = `LOW ${s.min}% · HIGH ${s.max}%`;
+  } else emptyChart($("dt-svg"), "COLLECTING HISTORY");
+
+  // Distance per day
+  // (always the last 7 days: 14 columns don't fit a third of the screen)
+  const days = lastDays(7).map((dd) => {
+    const v = x.drives.filter((r) => r.start >= dd.a && r.start < dd.b).reduce((a, r) => a + (r.distance || 0), 0);
+    return { ...dd, known: true, value: v };
+  });
+  $("dt-days-title").textContent = `${unit === "MI" ? "MILES" : "KM"} / DAY`;
+  dayColumns($("dt-days"), days, { max: Math.max(10, ...days.map((dd) => dd.value)) * 1.1, fmt: (dd) => (dd.value ? Math.round(dd.value) : "·") });
+
+  // Totals, efficiency and battery health
+  const driven = x.drives.filter((r) => r.wh_per != null && r.distance);
+  const dist = driven.reduce((a, r) => a + r.distance, 0);
+  const eff = dist ? Math.round(driven.reduce((a, r) => a + r.wh_per * r.distance, 0) / dist) : null;
+  const lastHealth = x.health.length ? x.health[x.health.length - 1][1]
+    : d.battery >= 50 && d.range ? (d.range / d.battery) * 100 : null;
+  const health = lastHealth && d.original_range
+    ? ` · <b>${Math.round((lastHealth / d.original_range) * 100)}%</b> OF NEW (${Math.round(d.original_range)})` : "";
+  const tot = (t) => `<b>${fmtDist(t.distance, d.unit)}</b> · <b>${t.kwh.toFixed(1)} KWH</b>${t.cost != null ? ` · <b>${fmtMoney(t.cost)}</b>` : ""}`;
+  $("dt-facts").innerHTML = `
+    <div class="line">THIS WEEK ${tot(x.week)}</div>
+    <div class="line">LAST 30 DAYS ${tot(x.month)}</div>
+    <div class="line">EFFICIENCY <b>${eff != null ? `${eff} WH/${unit}` : "—"}</b>${eff != null ? ` (${x.hours > 24 * 8 ? "30" : "7"} DAYS)` : ""}</div>
+    <div class="line">RANGE AT 100% <b>${lastHealth ? fmtDist(lastHealth, d.unit) : "—"}</b>${health}</div>`;
+
+  // Trip lists
+  $("dt-drives-n").textContent = x.drives.length ? `${x.drives.length} · ${fmtDist(x.drives.reduce((a, r) => a + (r.distance || 0), 0), d.unit)}` : "";
+  const drives = x.drives.map((r) => tripItem({
+    ts: r.start,
+    title: r.active ? "DRIVING NOW" : `${String(r.from || "?").toUpperCase()} → ${String(r.to || "?").toUpperCase()}`,
+    meta: `<b>${fmtDist(r.distance, d.unit, 1)}</b> · ${fmtMinutes(r.minutes)}${r.wh_per != null ? ` · ${r.wh_per} WH/${unit}` : ""}${r.max_speed ? ` · MAX ${r.max_speed}` : ""}`,
+  })).join("") || `<li class="empty">NO DRIVES IN THIS PERIOD</li>`;
+  const charges = x.charges.map((c) => tripItem({
+    ts: c.start,
+    tag: c.fast ? `<span class="sc">SC</span>` : "",
+    title: c.active ? "CHARGING NOW" : String(c.place || "UNKNOWN PLACE").toUpperCase(),
+    meta: `+<b>${c.kwh ?? "—"} KWH</b> · ${c.from_pct ?? "—"}→${c.to_pct ?? "—"}% · ${fmtMinutes(c.minutes)}${c.max_kw ? ` · ${c.max_kw} KW` : ""}${c.cost != null ? ` · ${fmtMoney(c.cost)}` : ""}`,
+  })).join("") || `<li class="empty">NO CHARGING IN THIS PERIOD</li>`;
+  $("dt-charges-n").textContent = x.charges.length ? `${x.charges.length} · ${x.charges.reduce((a, c) => a + (c.kwh || 0), 0).toFixed(1)} KWH` : "";
+  [["dt-drives", drives], ["dt-charges", charges]].forEach(([id, html]) => {
+    const list = $(id);
+    if (list.dataset.html !== html) { list.innerHTML = html; list.dataset.html = html; }
+  });
+}
+
 // ---------- polling loop ----------
 
 async function poll() {
@@ -1454,6 +1641,7 @@ async function poll() {
     renderIndoor(data.indoor);
     renderRepeater(data.repeater);
     if (data.hottub) renderHotTub(data.hottub);
+    renderTesla(data.tesla);
 
     renderOpenDetail();   // keep an open full-screen view live too
 
@@ -1473,10 +1661,14 @@ onTap($("p-mesh"), () => { chirp(); swapMeshRepeater(); });
 onTap($("p-repeater"), () => { chirp(); swapMeshRepeater(); });
 onTap($("p-weather"), () => { if (htConfigured) { chirp(); swapWeatherHotTub(); } });
 onTap($("p-hottub"), () => { chirp(); swapWeatherHotTub(); });
+onTap($("p-plex"), () => { if (tsConfigured) { chirp(); swapPlexTesla(); } });
+onTap($("p-tesla"), () => { chirp(); swapPlexTesla(); });
 // Auto-switch every 20 s, but not while someone is reading/scrolling the messages.
-// Outside / hot tub runs 10 s out of step, so the two spots don't flip at the same moment.
+// Outside / hot tub runs 10 s out of step, so the two spots don't flip at the same moment;
+// Plex / Tesla sits 5 s after MeshCore.
 setInterval(() => { if (Date.now() - lastTouch > IDLE_MS) swapMeshRepeater(); }, 20000);
 setTimeout(() => setInterval(() => { if (Date.now() - lastTouch > IDLE_MS) swapWeatherHotTub(); }, 20000), 10000);
+setTimeout(() => setInterval(() => { if (Date.now() - lastTouch > IDLE_MS) swapPlexTesla(); }, 20000), 5000);
 tickClock();
 setInterval(tickClock, 1000);
 poll();

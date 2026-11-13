@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="lcars.css?v=41">
+  <link rel="stylesheet" href="lcars.css?v=43">
 </head>
 <body>
 <div class="lcars">
@@ -71,6 +71,26 @@
           <div id="plex-streams" class="streams"></div>
           <div class="sub-bar"><span>RECENTLY WATCHED</span><i></i></div>
           <ol id="plex-history" class="history"></ol>
+        </section>
+
+        <!-- Tesla (via TeslaMate): shares the Plex spot; tap either panel to switch -->
+        <section class="panel span-6 swap-hidden" id="p-tesla" data-detail="tesla" style="--c:var(--peach)">
+          <h2 class="panel-head"><span class="ph-name" id="ts-name">TESLA</span><span class="ph-fill"></span><span class="ind" id="ts-plug">PLUGGED IN</span><span class="ptag"></span><span class="ph-cap" id="ts-cap"></span></h2>
+          <div class="clim">
+            <div class="cell"><div class="label">BATTERY</div><div class="bignum c-orange" id="ts-batt">—</div></div>
+            <div class="cell"><div class="label">RANGE</div><div class="bignum c-tan" id="ts-range">—</div></div>
+            <div class="side-info">
+              <div class="headline" id="ts-state">—</div>
+              <div class="line" id="ts-l1"></div>
+              <div class="line" id="ts-l2"></div>
+            </div>
+          </div>
+          <div class="meter-row ts-meter"><span class="label">SOC</span><div class="segs" id="ts-segs"></div></div>
+          <div class="sub-bar"><span id="ts-chg-title">CHARGING</span><i></i></div>
+          <div class="ts-chg" id="ts-chg"></div>
+          <div class="sub-bar"><span>BATTERY · 24 HRS</span><i></i></div>
+          <div class="dv-chart ts-chart"><div class="rp-axis" id="ts-axis"></div><svg class="dv-svg" id="ts-svg" viewBox="0 0 600 100" preserveAspectRatio="none" aria-label="Battery level, last 24 hours"></svg></div>
+          <div class="rp-days dv-ticks" id="ts-ticks"></div>
         </section>
 
         <!-- MeshCore -->
@@ -225,6 +245,38 @@
           </div>
         </section>
 
+        <section class="panel detail" id="d-tesla" style="--c:var(--peach)">
+          <h2 class="panel-head"><span class="ph-name" id="dt-name">TESLA · DETAIL</span><span class="ph-fill"></span><span class="ind" id="dt-plug">PLUGGED IN</span><span class="ptag"></span><button class="ph-cap back">BACK</button></h2>
+          <div class="dh-top">
+            <div class="cell"><div class="label">BATTERY</div><div class="bignum c-orange" id="dt-batt">—</div></div>
+            <div class="cell"><div class="label">RANGE</div><div class="bignum c-tan" id="dt-range">—</div></div>
+            <div class="side-info">
+              <div class="headline" id="dt-state">—</div>
+              <div class="line" id="dt-l1"></div><div class="line" id="dt-l2"></div><div class="line" id="dt-l3"></div>
+            </div>
+            <div class="ranges" data-key="tesla"><button data-hours="168">7 DAYS</button><button data-hours="720">30 DAYS</button></div>
+          </div>
+          <div class="sub-bar"><span>BATTERY %</span><i></i><b class="sb-note" id="dt-batt-note"></b></div>
+          <div class="ht-legend dh-legend"><span class="k-peach">━ BATTERY</span><span class="kc-orange">▮ CHARGING</span><span class="kc-blue">▮ DRIVING</span></div>
+          <div class="dv-chart dt-main"><div class="rp-axis" id="dt-axis"></div><svg class="dv-svg" id="dt-svg" viewBox="0 0 600 200" preserveAspectRatio="none" aria-label="Battery level, charging and driving"></svg></div>
+          <div class="rp-days dv-ticks" id="dt-ticks"></div>
+          <div class="dv-cols dt-cols">
+            <div class="dv-col">
+              <div class="sub-bar"><span id="dt-days-title">DISTANCE / DAY</span><i></i></div>
+              <div class="dh-days dt-days" id="dt-days"></div>
+              <div class="dv-facts dt-facts" id="dt-facts"></div>
+            </div>
+            <div class="dv-col">
+              <div class="sub-bar"><span>DRIVES</span><i></i><b class="sb-note" id="dt-drives-n"></b></div>
+              <ol class="trips dv-scroll" id="dt-drives"></ol>
+            </div>
+            <div class="dv-col">
+              <div class="sub-bar"><span>CHARGING SESSIONS</span><i></i><b class="sb-note" id="dt-charges-n"></b></div>
+              <ol class="trips dv-scroll" id="dt-charges"></ol>
+            </div>
+          </div>
+        </section>
+
         <section class="panel detail" id="d-mesh" style="--c:var(--tan)">
           <h2 class="panel-head"><span class="ph-name">MESHCORE · DETAIL</span><span class="ph-fill"></span><span class="ptag"></span><button class="ph-cap back">BACK</button></h2>
           <div class="dv-cols dm-cols">
@@ -356,6 +408,6 @@
   <ol class="tops" hidden></ol>
 </template>
 
-<script src="app.js?v=41"></script>
+<script src="app.js?v=43"></script>
 </body>
 </html>

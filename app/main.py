@@ -36,6 +36,7 @@ COLLECTORS = [
     c.Indoor(client),
     c.HotTub(client),
     c.Repeater(client),
+    c.Tesla(),
 ]
 
 # STATE["nas"] = {"configured": True, "ok": True, "error": None, "updated_at": "...", "data": {...}}

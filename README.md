@@ -25,6 +25,7 @@ This one is wired to **my** setup. Out of the box it supports:
 | **Outside** | [Open-Meteo](https://open-meteo.com/) (free, no key) | Temperature, feels-like, wind, today's high and low, air quality. |
 | **Hot tub** | Home Assistant, via the [ha-bestway](https://github.com/cdpuk/ha-bestway) add-on (Bestway / Lay-Z-Spa / SaluSpa) | Water vs target temperature, power / heater / filter lights, error codes, and a 24-hour chart of water temperature with heater-on time. Shares the Outside spot: it flips every 20 s, or tap. |
 | **Indoor climate** | Home Assistant REST API (an ecobee in my case) | Room temperatures, thermostat setpoint and mode. |
+| **Tesla** | [TeslaMate](https://github.com/teslamate-org/teslamate): its MQTT feed for live status, its database (read-only) for history | Parked / driving / charging / asleep, battery % and range, charge bar, live charging power, energy added and time to full (or the last charge), 24-hour battery chart. Shares the Plex spot: it flips every 20 s, or tap. |
 
 **Full-screen views:** tap any panel's title bar for a bigger view with longer graphs. BACK, or 60 seconds untouched, goes back to the overview.
 
@@ -37,6 +38,7 @@ This one is wired to **my** setup. Out of the box it supports:
 | Outside | Temperature and feels-like for the past day and next two (or the coming week), chance of rain, a 7-day forecast, sunrise / sunset / UV, air quality for the past and next 24 hours. |
 | Indoor | Each room's temperature with the set point and heating / cooling periods over 24 hours to 7 days, humidity, HVAC hours per day. |
 | Hot tub | Water vs target over 24 hours to 7 days with heating and filter runs, heat-up and cool-down rates, time to target, heater hours per day. |
+| Tesla | Battery % over 7 or 30 days with charging and driving shaded, distance per day, every drive (from → to, distance, time, Wh per mile/km) and charging session (where, kWh, % before and after, peak kW, cost), weekly and 30-day totals, efficiency, range at 100% compared with new. |
 
 **Hot tub note:** some Bestway pumps (mine is an UltraFit AirJet) report their readings with short names (`Tnow`, `Tset`, `heat`) that ha-bestway 1.11.1 ignores, so the temperature shows as *unknown* in Home Assistant. [`docs/ha-bestway-v1-short-names.patch`](docs/ha-bestway-v1-short-names.patch) is a three-line fix for the add-on. Updating the add-on removes it, so you'd have to apply it again.
 
@@ -99,6 +101,18 @@ Notes:
   If you don't want those views, remove the extra permissions. The panel still shows its meters.
 - **Updating the page:** after changing `lcars.css` or `app.js`, bump the `?v=` number in `index.html` so browsers pick up the new file.
 - **Logs:** `docker compose logs -f`
+- **Tesla:** the dashboard needs TeslaMate's MQTT port and a *read-only* Postgres login. If TeslaMate runs on the same machine, publish both on localhost only in TeslaMate's `docker-compose.yml` (`127.0.0.1:1883:1883` on mosquitto, `127.0.0.1:5432:5432` on the database), then create the login:
+
+  ```sql
+  CREATE ROLE lcars_ro LOGIN PASSWORD 'pick-one';
+  ALTER ROLE lcars_ro SET default_transaction_read_only = on;
+  GRANT CONNECT ON DATABASE teslamate TO lcars_ro;
+  GRANT USAGE ON SCHEMA public TO lcars_ro;
+  GRANT SELECT ON ALL TABLES IN SCHEMA public TO lcars_ro;
+  ALTER DEFAULT PRIVILEGES FOR ROLE teslamate IN SCHEMA public GRANT SELECT ON TABLES TO lcars_ro;
+  ```
+
+  Distances follow TeslaMate's own unit setting.
 
 ### Mac helper (optional)
 
@@ -132,6 +146,7 @@ There's **no login**. Anyone who can reach the dashboard can see what it shows:
 - mesh messages
 - running programs
 - room temperatures
+- your car's state and charge, and the places your drives started and ended (Tesla full-screen view)
 
 The Mac helper is also open to anyone on your network. Keep both on your home network, or behind a VPN like Tailscale. Don't expose them to the internet.
 

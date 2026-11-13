@@ -10,6 +10,7 @@ Every collector has:
 Settings come from environment variables, which Docker loads from the .env file.
 """
 import asyncio
+import json
 import os
 import re
 import shutil
@@ -1183,3 +1184,262 @@ class Repeater(Collector):
 
     async def detail(self, hours=None):
         return {"readings": self.history(days=self.KEEP_DAYS), "poll_minutes": self.poll_seconds // 60}
+
+
+# ------------------------------------------------------------------
+# Tesla, via TeslaMate (https://github.com/teslamate-org/teslamate)
+# ------------------------------------------------------------------
+
+KM_PER_MI = 1.609344
+
+
+class Tesla(Collector):
+    """
+    A Tesla that TeslaMate is logging.
+
+    Live status (state, battery, charging) comes from TeslaMate's MQTT feed, which it
+    re-sends on connect, so the panel fills in right away. History (battery graph, drives,
+    charging sessions) comes from TeslaMate's Postgres database, through a read-only login.
+
+      TESLAMATE_MQTT  host:port of TeslaMate's MQTT broker, e.g. 127.0.0.1:1883
+      TESLAMATE_DB    postgresql://user:password@host:5432/teslamate (read-only user)
+      TESLA_CAR_ID    which car, if TeslaMate has more than one (default 1)
+      TESLA_NAME      name shown on the panel (default: the car's name in TeslaMate, else TESLA)
+      TESLA_ORIGINAL_RANGE  range at 100% when new, in your units (e.g. 272), for battery health
+
+    Distances follow TeslaMate's own unit setting (Settings > Units).
+    """
+    name = "tesla"
+    interval = 5
+    HISTORY_EVERY = 120   # seconds between database refreshes for the panel
+
+    def __init__(self, client=None):
+        self.mqtt_addr = env("TESLAMATE_MQTT")
+        self.dsn = env("TESLAMATE_DB")
+        self.car = int(env("TESLA_CAR_ID", "1"))
+        self.label = env("TESLA_NAME")
+        try:
+            self.original = float(env("TESLA_ORIGINAL_RANGE", "") or 0) or None
+        except ValueError:
+            self.original = None
+        self.live = {}            # latest value of each MQTT topic
+        self.mqtt = None
+        self.mqtt_ok = False
+        self.db_at = 0
+        self.db_part = {}
+        self.cache = Cached(60)
+
+    def configured(self):
+        return bool(self.mqtt_addr and self.dsn)
+
+    # --- live feed (MQTT, runs in its own thread) ---
+
+    def _start_mqtt(self):
+        import paho.mqtt.client as mqtt
+        host, _, port = self.mqtt_addr.partition(":")
+        prefix = "teslamate/cars/%d/" % self.car
+
+        def on_connect(cl, userdata, flags, reason, props=None):
+            self.mqtt_ok = not reason.is_failure
+            if self.mqtt_ok:
+                cl.subscribe(prefix + "#")
+
+        def on_disconnect(cl, userdata, flags, reason, props=None):
+            self.mqtt_ok = False
+
+        def on_message(cl, userdata, msg):
+            self.live[msg.topic[len(prefix):]] = msg.payload.decode("utf-8", "replace")
+
+        cl = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="lcars-dashboard-%d" % os.getpid())
+        cl.on_connect, cl.on_disconnect, cl.on_message = on_connect, on_disconnect, on_message
+        cl.reconnect_delay_set(2, 30)
+        cl.connect_async(host, int(port or 1883), keepalive=60)
+        cl.loop_start()   # reconnects by itself
+        self.mqtt = cl
+
+    def _num(self, key):
+        try:
+            return float(self.live[key])
+        except (KeyError, ValueError):
+            return None
+
+    def _bool(self, key):
+        v = self.live.get(key)
+        return None if v in (None, "") else v == "true"
+
+    # --- database ---
+
+    async def _query(self, *queries):
+        """Run several (sql, params) in one connection; returns a list of row lists."""
+        import psycopg
+        async with await psycopg.AsyncConnection.connect(self.dsn, connect_timeout=5) as conn:
+            out = []
+            for sql, params in queries:
+                cur = await conn.execute(sql, params)
+                out.append(await cur.fetchall())
+            return out
+
+    UNITS_SQL = ("SELECT unit_of_length FROM settings LIMIT 1", ())
+    CAR_SQL = ("SELECT name, model, marketing_name, efficiency FROM cars WHERE id = %s", None)
+
+    # Battery level over time: positions (driving / awake) plus charge readings, averaged into bins
+    BATTERY_SQL = """
+        SELECT extract(epoch FROM date_bin(%s::interval, date, timestamp '2000-01-01'))::bigint AS t,
+               round(avg(battery_level)) AS level, avg(rated_battery_range_km) AS range_km
+        FROM (SELECT date, battery_level, rated_battery_range_km FROM positions
+               WHERE car_id = %s AND date > (now() AT TIME ZONE 'utc') - %s::interval AND battery_level IS NOT NULL
+              UNION ALL
+              SELECT c.date, c.battery_level, c.rated_battery_range_km FROM charges c
+               JOIN charging_processes cp ON cp.id = c.charging_process_id
+               WHERE cp.car_id = %s AND c.date > (now() AT TIME ZONE 'utc') - %s::interval) AS r
+        GROUP BY 1 ORDER BY 1"""
+
+    PLACE = "coalesce({g}.name, {a}.name, nullif(concat_ws(', ', {a}.road, {a}.city), ''), {a}.display_name)"
+
+    CHARGES_SQL = """
+        SELECT extract(epoch FROM cp.start_date)::bigint, extract(epoch FROM coalesce(cp.end_date, now() AT TIME ZONE 'utc'))::bigint,
+               cp.end_date IS NULL, cp.charge_energy_added, cp.start_battery_level, cp.end_battery_level,
+               cp.start_rated_range_km, cp.end_rated_range_km, cp.duration_min, cp.cost, {place},
+               (SELECT bool_or(c.fast_charger_present) FROM charges c WHERE c.charging_process_id = cp.id),
+               (SELECT max(c.charger_power) FROM charges c WHERE c.charging_process_id = cp.id)
+        FROM charging_processes cp
+        LEFT JOIN geofences g ON g.id = cp.geofence_id LEFT JOIN addresses a ON a.id = cp.address_id
+        WHERE cp.car_id = %s AND cp.start_date > (now() AT TIME ZONE 'utc') - %s::interval
+        ORDER BY cp.start_date DESC LIMIT %s""".format(place=PLACE.format(g="g", a="a"))
+
+    DRIVES_SQL = """
+        SELECT extract(epoch FROM d.start_date)::bigint, extract(epoch FROM coalesce(d.end_date, now() AT TIME ZONE 'utc'))::bigint,
+               d.end_date IS NULL, d.distance, d.duration_min, d.start_rated_range_km - d.end_rated_range_km, d.speed_max,
+               {start}, {end}
+        FROM drives d
+        LEFT JOIN geofences sg ON sg.id = d.start_geofence_id LEFT JOIN addresses sa ON sa.id = d.start_address_id
+        LEFT JOIN geofences eg ON eg.id = d.end_geofence_id LEFT JOIN addresses ea ON ea.id = d.end_address_id
+        WHERE d.car_id = %s AND d.start_date > (now() AT TIME ZONE 'utc') - %s::interval
+        ORDER BY d.start_date DESC LIMIT %s""".format(start=PLACE.format(g="sg", a="sa"), end=PLACE.format(g="eg", a="ea"))
+
+    # Range at 100%, worked out from the end of each finished charge (the car's own estimate)
+    HEALTH_SQL = """
+        SELECT extract(epoch FROM end_date)::bigint, end_rated_range_km * 100.0 / end_battery_level
+        FROM charging_processes
+        WHERE car_id = %s AND end_date IS NOT NULL AND end_battery_level >= 50 AND end_rated_range_km > 0
+        ORDER BY end_date"""
+
+    def _dist(self, km, mi):
+        return None if km is None else float(km) / KM_PER_MI if mi else float(km)
+
+    def _charge(self, r, mi):
+        t0, t1, active, kwh, lvl0, lvl1, rng0, rng1, minutes, cost, place, fast, max_kw = r
+        return {"start": t0, "end": t1, "active": active, "kwh": float(kwh) if kwh is not None else None,
+                "from_pct": lvl0, "to_pct": lvl1,
+                "added_range": self._dist(rng1 - rng0, mi) if rng0 is not None and rng1 is not None else None,
+                "minutes": minutes, "cost": float(cost) if cost is not None else None,
+                "place": place, "fast": bool(fast), "max_kw": max_kw}
+
+    def _drive(self, r, mi, eff):
+        t0, t1, active, dist, minutes, used_km, vmax, a, b = r
+        wh = None   # energy per distance, the same way TeslaMate works it out (rated range used x efficiency)
+        if eff and dist and used_km is not None and dist > 0.5:
+            wh = float(used_km) * eff * 1000 / dist * (KM_PER_MI if mi else 1)
+        return {"start": t0, "end": t1, "active": active, "distance": self._dist(dist, mi), "minutes": minutes,
+                "wh_per": round(wh) if wh is not None else None,
+                "max_speed": round(self._dist(vmax, mi)) if vmax is not None else None, "from": a, "to": b}
+
+    async def _db_panel(self):
+        units, car, battery, charges = await self._query(
+            self.UNITS_SQL, (self.CAR_SQL[0], (self.car,)),
+            (self.BATTERY_SQL, ("10 minutes", self.car, "24 hours", self.car, "24 hours")),
+            (self.CHARGES_SQL, (self.car, "3650 days", 1)))
+        mi = bool(units) and units[0][0] == "mi"
+        return {
+            "mi": mi,
+            "car": car[0] if car else None,
+            "battery": [[t, int(lvl)] for t, lvl, _ in battery],
+            "last_charge": self._charge(charges[0], mi) if charges else None,
+        }
+
+    async def collect(self):
+        if self.mqtt is None:
+            self._start_mqtt()
+        if time.time() - self.db_at > self.HISTORY_EVERY:
+            try:
+                self.db_part = await self._db_panel()
+                self.db_at = time.time()
+            except Exception as exc:
+                if not self.db_part:
+                    raise RuntimeError("TeslaMate database: %s" % exc)
+        if not self.live.get("state"):
+            raise RuntimeError("waiting for TeslaMate's MQTT feed" if self.mqtt_ok else "can't reach TeslaMate's MQTT broker")
+
+        mi = self.db_part.get("mi", False)
+        car = self.db_part.get("car")
+        live_charging = self.live.get("charging_state") == "Charging"
+        try:
+            update = json.loads(self.live.get("software_update") or "{}")
+        except ValueError:
+            update = {}
+        return {
+            "label": self.label or (car and car[0]) or "TESLA",
+            "model": " ".join(str(x) for x in ("MODEL " + car[1] if car and car[1] else None,
+                                                car[2] if car else None) if x) or None,
+            "unit": "mi" if mi else "km",
+            "state": self.live.get("state"),            # online, asleep, offline, driving, charging, updating, suspended
+            "since": self.live.get("since"),
+            "feed_ok": self.mqtt_ok,
+            "battery": self._num("battery_level"),
+            "usable_battery": self._num("usable_battery_level"),
+            "range": self._dist(self._num("rated_battery_range_km"), mi),
+            "est_range": self._dist(self._num("est_battery_range_km"), mi),
+            "odometer": self._dist(self._num("odometer"), mi),
+            "plugged_in": self._bool("plugged_in"),
+            "charging_state": self.live.get("charging_state"),   # Charging, Complete, Stopped, Disconnected, NoPower
+            "charge_limit": self._num("charge_limit_soc"),
+            "charger_power": self._num("charger_power"),          # kW
+            "charge_added": self._num("charge_energy_added"),     # kWh this session
+            "time_to_full": self._num("time_to_full_charge") if live_charging else None,   # hours
+            "charger_volts": self._num("charger_voltage"),
+            "charger_amps": self._num("charger_actual_current"),
+            "scheduled_charge": self.live.get("scheduled_charging_start_time") or None,
+            "version": self.live.get("version") or update.get("installed_version"),
+            "update_available": self._bool("update_available"),
+            "battery_24h": self.db_part.get("battery", []),
+            "last_charge": self.db_part.get("last_charge"),
+            "original_range": self.original,
+        }
+
+    # --- full-screen detail view ---
+
+    async def _detail(self, hours):
+        span = "%d hours" % hours
+        binning = "15 minutes" if hours <= 24 * 8 else "1 hour"
+        units, car, battery, charges, drives, health, week, month = await self._query(
+            self.UNITS_SQL, (self.CAR_SQL[0], (self.car,)),
+            (self.BATTERY_SQL, (binning, self.car, span, self.car, span)),
+            (self.CHARGES_SQL, (self.car, span, 200)),
+            (self.DRIVES_SQL, (self.car, span, 500)),
+            (self.HEALTH_SQL, (self.car,)),
+            ("""SELECT (SELECT coalesce(sum(distance), 0) FROM drives WHERE car_id = %s AND start_date > (now() AT TIME ZONE 'utc') - interval '7 days'),
+                       (SELECT coalesce(sum(charge_energy_added), 0) FROM charging_processes WHERE car_id = %s AND start_date > (now() AT TIME ZONE 'utc') - interval '7 days'),
+                       (SELECT sum(cost) FROM charging_processes WHERE car_id = %s AND start_date > (now() AT TIME ZONE 'utc') - interval '7 days')""",
+             (self.car,) * 3),
+            ("""SELECT (SELECT coalesce(sum(distance), 0) FROM drives WHERE car_id = %s AND start_date > (now() AT TIME ZONE 'utc') - interval '30 days'),
+                       (SELECT coalesce(sum(charge_energy_added), 0) FROM charging_processes WHERE car_id = %s AND start_date > (now() AT TIME ZONE 'utc') - interval '30 days'),
+                       (SELECT sum(cost) FROM charging_processes WHERE car_id = %s AND start_date > (now() AT TIME ZONE 'utc') - interval '30 days')""",
+             (self.car,) * 3))
+        mi = bool(units) and units[0][0] == "mi"
+        eff = car[0][3] if car else None
+        total = lambda row: {"distance": self._dist(row[0], mi), "kwh": float(row[1]),
+                             "cost": float(row[2]) if row[2] is not None else None}
+        return {
+            "hours": hours,
+            "unit": "mi" if mi else "km",
+            "battery": [[t, int(lvl), round(self._dist(km, mi), 1) if km is not None else None] for t, lvl, km in battery],
+            "charges": [self._charge(r, mi) for r in charges],
+            "drives": [self._drive(r, mi, eff) for r in drives],
+            "health": [[t, round(self._dist(km, mi), 1)] for t, km in health],
+            "week": total(week[0]),
+            "month": total(month[0]),
+        }
+
+    async def detail(self, hours=168):
+        hours = int(max(24, min(hours or 168, 24 * 90)))
+        return await self.cache.get(lambda: self._detail(hours), key=hours)

@@ -513,9 +513,45 @@ button.ph-cap { border: 0; font-family: inherit; letter-spacing: inherit; cursor
 /* indoor detail */
 .dh-top .clim-cells .bignum { font-size: 64px; min-width: 140px; }
 
+/* tesla (shares the Plex spot) */
+#p-plex, #p-tesla { cursor: pointer; }
+.bignum.low { background: var(--red) !important; }
+.side-info .headline.charging { color: var(--orange); }
+.side-info .headline.driving { color: var(--blue); }
+.ts-meter { grid-template-columns: 34px 1fr; margin-top: 8px; }
+#p-tesla .sub-bar { margin: 8px 0 4px; }
+.ts-chg { flex: none; }
+.chg-cells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+.chg { background: #11111c; padding: 3px 10px 4px; min-width: 0; }
+.chg:first-child { border-radius: 16px 0 0 16px; } .chg:last-child { border-radius: 0 16px 16px 0; }
+.chg .label { font-size: 12px; }
+.chg b { display: block; color: var(--orange); font-size: 24px; font-weight: 700; line-height: 1.1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chg small { font-size: 0.55em; margin: 0 3px 0 2px; color: var(--peach); }
+.sc { background: var(--red); color: #000 !important; font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 999px 0 0 999px; margin-right: 6px; }
+/* the chart takes whatever height is left, so the time labels under it always fit */
+.ts-chart { min-height: 40px; height: 90px; }   /* (height only matters off the one-screen layout) */
+/* tesla detail */
+.dt-cols { flex: none; height: 236px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
+.dt-days { flex: 1 1 0; height: auto; min-height: 70px; gap: 4px; }
+.dt-days .dh-bar i { background: var(--blue); }
+.dt-facts { flex: none; margin-top: 6px; }
+.dt-facts .line { font-size: 14px; margin: 0 0 2px; }
+.trips { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.trips li { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 8px; align-items: center; }
+.trips li.empty { display: block; color: #77779a; font-size: 16px; }
+.tr-when { background: var(--dim); color: var(--lavender); font-size: 12px; line-height: 1.15; text-align: center; padding: 2px 0; border-radius: 999px 0 0 999px; }
+.tr-when b { display: block; color: var(--peach); font-weight: 600; }
+.tr-body { min-width: 0; }
+.tr-title { color: var(--peach); font-size: 15px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-meta { color: var(--lavender); font-size: 13px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-meta b { color: var(--peach); font-weight: 600; }
+
 @media (max-width: 800px) {
   .dv-cols { display: flex; flex-direction: column; }
-  .dv-chart, .dr-main, .dw-main, .di-main { flex: none; height: 160px; }
+  .dv-chart, .dr-main, .dw-main, .di-main, .dt-main { flex: none; height: 160px; }
+  .dt-cols { height: auto; }
+  .dt-days { flex: none; height: 110px; }
+  .chg-cells { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dv-scroll { flex: none; max-height: 420px; }
   .dw-days { min-height: 120px; }
   .dw-hi { font-size: 22px; }

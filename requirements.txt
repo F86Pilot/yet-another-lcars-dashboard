@@ -3,3 +3,5 @@ uvicorn==0.34.0
 httpx==0.28.1
 psutil==6.1.1
 python-dotenv==1.0.1
+paho-mqtt==2.1.0
+psycopg[binary]==3.2.3

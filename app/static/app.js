@@ -1538,9 +1538,10 @@ function renderTesla(entry) {
       <div class="line">${status}</div></div>`;
   }
 
-  // Battery level, last 24 hours
-  const end = Date.now() / 1000, start = end - 86400;
-  const pts = d.battery_24h.slice();
+  // Battery level over the last couple of days (the server says how many hours)
+  const end = Date.now() / 1000, start = end - d.battery_hours * 3600;
+  $("ts-chart-title").textContent = `BATTERY · ${d.battery_hours} HRS`;
+  const pts = d.battery_recent.slice();
   if (d.battery != null) pts.push([end, d.battery]);
   const { grid, ticks } = timeGrid(start, end);
   drawTicks($("ts-ticks"), ticks, start, end);

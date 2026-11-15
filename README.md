@@ -25,7 +25,7 @@ This one is wired to **my** setup. Out of the box it supports:
 | **Outside** | [Open-Meteo](https://open-meteo.com/) (free, no key) | Temperature, feels-like, wind, today's high and low, air quality. |
 | **Hot tub** | Home Assistant, via the [ha-bestway](https://github.com/cdpuk/ha-bestway) add-on (Bestway / Lay-Z-Spa / SaluSpa) | Water vs target temperature, power / heater / filter lights, error codes, and a 24-hour chart of water temperature with heater-on time. Shares the Outside spot: it flips every 20 s, or tap. |
 | **Indoor climate** | Home Assistant REST API (an ecobee in my case) | Room temperatures, thermostat setpoint and mode. |
-| **Tesla** | [TeslaMate](https://github.com/teslamate-org/teslamate): its MQTT feed for live status, its database (read-only) for history | Parked / driving / charging / asleep, battery % and range, charge bar, live charging power, energy added and time to full (or the last charge), 24-hour battery chart. Shares the Plex spot: it flips every 20 s, or tap. |
+| **Tesla** | [TeslaMate](https://github.com/teslamate-org/teslamate): its MQTT feed for live status, its database (read-only) for history | Parked / driving / charging / asleep, battery % and range, charge bar, live charging power, energy added and time to full (or the last charge), 48-hour battery chart. Shares the Plex spot: it flips every 20 s, or tap. |
 
 **Full-screen views:** tap any panel's title bar for a bigger view with longer graphs. BACK, or 60 seconds untouched, goes back to the overview.
 

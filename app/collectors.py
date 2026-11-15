@@ -1212,6 +1212,7 @@ class Tesla(Collector):
     name = "tesla"
     interval = 5
     HISTORY_EVERY = 120   # seconds between database refreshes for the panel
+    PANEL_HOURS = 48      # how far back the panel's battery chart goes
 
     def __init__(self, client=None):
         self.mqtt_addr = env("TESLAMATE_MQTT")
@@ -1294,6 +1295,28 @@ class Tesla(Collector):
                WHERE cp.car_id = %s AND c.date > (now() AT TIME ZONE 'utc') - %s::interval) AS r
         GROUP BY 1 ORDER BY 1"""
 
+    # The last reading from before the window. If the car slept through the start of the
+    # window, the chart starts from this level instead of leaving the left side blank.
+    BEFORE_SQL = """
+        SELECT battery_level, rated_battery_range_km FROM (
+          (SELECT date, battery_level, rated_battery_range_km FROM positions
+            WHERE car_id = %s AND date <= (now() AT TIME ZONE 'utc') - %s::interval AND battery_level IS NOT NULL
+            ORDER BY date DESC LIMIT 1)
+          UNION ALL
+          (SELECT c.date, c.battery_level, c.rated_battery_range_km FROM charges c
+            JOIN charging_processes cp ON cp.id = c.charging_process_id
+            WHERE cp.car_id = %s AND c.date <= (now() AT TIME ZONE 'utc') - %s::interval
+            ORDER BY c.date DESC LIMIT 1)) AS r
+        ORDER BY date DESC LIMIT 1"""
+
+    @staticmethod
+    def _with_start(rows, before, hours):
+        """Battery rows, led by the last earlier reading placed at the window's start."""
+        if before:
+            start = int(time.time() - hours * 3600)
+            rows = [(start, before[0][0], before[0][1])] + [r for r in rows if r[0] > start]
+        return rows
+
     PLACE = "coalesce({g}.name, {a}.name, nullif(concat_ws(', ', {a}.road, {a}.city), ''), {a}.display_name)"
 
     CHARGES_SQL = """
@@ -1345,10 +1368,13 @@ class Tesla(Collector):
                 "max_speed": round(self._dist(vmax, mi)) if vmax is not None else None, "from": a, "to": b}
 
     async def _db_panel(self):
-        units, car, battery, charges = await self._query(
+        span = "%d hours" % self.PANEL_HOURS
+        units, car, battery, before, charges = await self._query(
             self.UNITS_SQL, (self.CAR_SQL[0], (self.car,)),
-            (self.BATTERY_SQL, ("10 minutes", self.car, "24 hours", self.car, "24 hours")),
+            (self.BATTERY_SQL, ("15 minutes", self.car, span, self.car, span)),
+            (self.BEFORE_SQL, (self.car, span, self.car, span)),
             (self.CHARGES_SQL, (self.car, "3650 days", 1)))
+        battery = self._with_start(battery, before, self.PANEL_HOURS)
         mi = bool(units) and units[0][0] == "mi"
         return {
             "mi": mi,
@@ -1401,7 +1427,8 @@ class Tesla(Collector):
             "scheduled_charge": self.live.get("scheduled_charging_start_time") or None,
             "version": self.live.get("version") or update.get("installed_version"),
             "update_available": self._bool("update_available"),
-            "battery_24h": self.db_part.get("battery", []),
+            "battery_recent": self.db_part.get("battery", []),
+            "battery_hours": self.PANEL_HOURS,
             "last_charge": self.db_part.get("last_charge"),
             "original_range": self.original,
         }
@@ -1411,9 +1438,10 @@ class Tesla(Collector):
     async def _detail(self, hours):
         span = "%d hours" % hours
         binning = "15 minutes" if hours <= 24 * 8 else "1 hour"
-        units, car, battery, charges, drives, health, week, month = await self._query(
+        units, car, battery, before, charges, drives, health, week, month = await self._query(
             self.UNITS_SQL, (self.CAR_SQL[0], (self.car,)),
             (self.BATTERY_SQL, (binning, self.car, span, self.car, span)),
+            (self.BEFORE_SQL, (self.car, span, self.car, span)),
             (self.CHARGES_SQL, (self.car, span, 200)),
             (self.DRIVES_SQL, (self.car, span, 500)),
             (self.HEALTH_SQL, (self.car,)),
@@ -1427,6 +1455,7 @@ class Tesla(Collector):
              (self.car,) * 3))
         mi = bool(units) and units[0][0] == "mi"
         eff = car[0][3] if car else None
+        battery = self._with_start(battery, before, hours)
         total = lambda row: {"distance": self._dist(row[0], mi), "kwh": float(row[1]),
                              "cost": float(row[2]) if row[2] is not None else None}
         return {

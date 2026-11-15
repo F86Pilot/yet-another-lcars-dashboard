@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="lcars.css?v=44">
+  <link rel="stylesheet" href="lcars.css?v=45">
 </head>
 <body>
 <div class="lcars">
@@ -88,8 +88,8 @@
           <div class="meter-row ts-meter"><span class="label">SOC</span><div class="segs" id="ts-segs"></div></div>
           <div class="sub-bar"><span id="ts-chg-title">CHARGING</span><i></i></div>
           <div class="ts-chg" id="ts-chg"></div>
-          <div class="sub-bar"><span>BATTERY · 24 HRS</span><i></i></div>
-          <div class="dv-chart ts-chart"><div class="rp-axis" id="ts-axis"></div><svg class="dv-svg" id="ts-svg" viewBox="0 0 600 100" preserveAspectRatio="none" aria-label="Battery level, last 24 hours"></svg></div>
+          <div class="sub-bar"><span id="ts-chart-title">BATTERY · 48 HRS</span><i></i></div>
+          <div class="dv-chart ts-chart"><div class="rp-axis" id="ts-axis"></div><svg class="dv-svg" id="ts-svg" viewBox="0 0 600 100" preserveAspectRatio="none" aria-label="Battery level, last 48 hours"></svg></div>
           <div class="rp-days dv-ticks" id="ts-ticks"></div>
         </section>
 
@@ -408,6 +408,6 @@
   <ol class="tops" hidden></ol>
 </template>
 
-<script src="app.js?v=44"></script>
+<script src="app.js?v=45"></script>
 </body>
 </html>

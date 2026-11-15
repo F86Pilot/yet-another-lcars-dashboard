@@ -369,7 +369,7 @@ span > .key:not(:first-child) { margin-left: 10px; }
 
 /* ---------- full-screen detail views ----------
    Tap a panel's title bar (those with data-detail) to swap the whole panel grid for its detail view. */
-.panel[data-detail] .panel-head { cursor: pointer; }
+.panel[data-detail] .panel-head, .details .panel-head { cursor: pointer; }
 body.detail-open .panels { display: none; }
 .details[hidden] { display: none; }
 .details { flex: 1; min-height: 0; display: flex; padding: 10px 4px 0 14px; }

@@ -1330,6 +1330,12 @@ function setupDetails() {
     });
   });
   document.querySelectorAll(".details .back").forEach((b) => b.addEventListener("click", () => { chirp(); closeDetail(); }));
+  // The title bar works like BACK too, the same bar that opened the view
+  document.querySelectorAll(".details .panel-head").forEach((head) => onTap(head, (e) => {
+    if (e.target.closest(".back")) return;   // BACK handles itself
+    chirp();
+    closeDetail();
+  }));
   ["pointerdown", "wheel", "keydown", "touchmove"].forEach((ev) =>
     $("details").addEventListener(ev, () => { lastTouch = Date.now(); }, { passive: true }));
   document.querySelectorAll(".ranges[data-key] button").forEach((b) => b.addEventListener("click", () => {
